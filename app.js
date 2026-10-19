@@ -255,22 +255,14 @@ function initMap() {
   if (map) return;
 
   // Initsialiseerime kaardi
-  map = L.map('map', {
-    zoomControl: false // Viime pluss-miinuse nupud vajadusel mujale
-  }).setView([userCoords.lat, userCoords.lng], 14);
+  map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
 
-  // Lisame standardse kaardi kihi
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Taastame puhta ja stiilse tumeda kaardi (CartoDB tumedad plaadid)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
     maxZoom: 19
   }).addTo(map);
-
-  // Rakendame kaardikonteinerile tumeda Google Mapsi stiilis filtri
-  setTimeout(() => {
-    const tilePane = document.querySelector('.leaflet-tile-pane');
-    if (tilePane) {
-      tilePane.style.filter = 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%)';
-    }
-  }, 150);
 
   // Geolokatsioon ja markerid
   if ('geolocation' in navigator) {
