@@ -1,14 +1,32 @@
+/* ==========================================================================
+   GOWALK PRO — MOBILE-FIRST DESIGN SYSTEM (ZERO-SCROLL VIEWPORT)
+   Typography: Plus Jakarta Sans (Headings/Numbers) + Inter (UI)
+   ========================================================================== */
+
 :root {
-  --bg-main: #0b0514;
-  --bg-card: #160c26;
-  --bg-input: #211338;
-  --neon-pink: #ff1e8e;
-  --neon-purple: #a855f7;
-  --text-main: #ffffff;
-  --text-muted: #a395b8;
-  --border-color: rgba(255, 30, 142, 0.22);
-  --danger: #ff4d6d;
-  --success: #10b981;
+  --bg-deep: #090d16;
+  --bg-surface: rgba(15, 23, 42, 0.86);
+  --bg-glass: rgba(15, 23, 42, 0.75);
+  --bg-card: rgba(30, 41, 59, 0.65);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-highlight: rgba(16, 185, 129, 0.4);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --accent-primary: #10b981;
+  --accent-glow: rgba(16, 185, 129, 0.35);
+  --accent-secondary: #06b6d4;
+  --danger: #ef4444;
+
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-pill: 9999px;
 }
 
 * {
@@ -18,546 +36,1048 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--bg-main);
-  background-image: radial-gradient(circle at 50% 0%, #240f42 0%, #0b0514 70%);
-  color: var(--text-main);
-  min-height: 100vh;
-  overflow-x: hidden;
+html, body {
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden; /* Välistab igasuguse üleliigse kerimise esilehel */
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  user-select: none;
 }
 
-/* Vaadete haldus */
-.view {
-  display: none;
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 16px;
-  min-height: 100vh;
+/* Numbripaigutus, et numbrid ei hüpleks */
+.steps-big-number,
+.ring-percent,
+.mini-metric span,
+.stat-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
 
-.view.active {
-  display: block;
+/* ==========================================================================
+   PÕHIVAADE (FULLSCREEN VIEWPORT)
+   ========================================================================== */
+
+.app-viewport {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
-.hidden {
+.fullscreen-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background: #0b1120;
+}
+
+/* Tume režiimi filter Google teedekaardile */
+.map-tiles-dark {
+  filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(92%) saturate(85%);
+}
+
+/* Peida Leaflet vaikimisi suuminupud mobiilis puhta vaate jaoks */
+.leaflet-control-zoom {
   display: none !important;
 }
 
-/* Bränd ja Logo */
-.brand-header {
-  text-align: center;
-  margin-bottom: 24px;
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: rgba(9, 13, 22, 0.5) !important;
+  color: var(--text-muted) !important;
+  backdrop-filter: blur(4px);
+}
+.leaflet-control-attribution a {
+  color: var(--text-secondary) !important;
 }
 
-.logo-icon {
-  display: inline-flex;
-  margin-bottom: 10px;
-  filter: drop-shadow(0 0 16px rgba(255, 30, 142, 0.45));
-}
+/* ==========================================================================
+   ÜLEMINE HÕLJUV PÄIS & KAARDIKIHID
+   ========================================================================== */
 
-.brand-title {
-  font-size: 2.2rem;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-}
-
-.brand-title span,
-.brand-title-sm span {
-  color: var(--neon-pink);
-  text-shadow: 0 0 12px rgba(255, 30, 142, 0.5);
-}
-
-.brand-subtitle {
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  margin-top: 4px;
-}
-
-/* Sisselogimise kaart */
-.auth-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 24px;
-  padding: 28px 20px;
-  margin-top: 24px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-}
-
-.auth-tabs {
+.floating-topbar {
+  position: relative;
+  z-index: 10;
   display: flex;
-  background: var(--bg-input);
-  border-radius: 12px;
-  padding: 4px;
-  margin-bottom: 20px;
-}
-
-.auth-tab {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 10px;
-  font-weight: 600;
-  border-radius: 9px;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.auth-tab.active {
-  background: var(--neon-pink);
-  color: #fff;
-  box-shadow: 0 2px 10px rgba(255, 30, 142, 0.4);
-}
-
-/* Vormid ja sisendid */
-.input-group {
-  margin-bottom: 16px;
-}
-
-label {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 6px;
+  justify-content: space-between;
+  padding: max(12px, env(safe-area-inset-top)) 16px 8px;
+  pointer-events: none;
 }
 
-input[type="email"],
-input[type="password"],
-input[type="number"],
-select {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 12px 14px;
-  color: var(--text-main);
-  font-size: 1rem;
-  font-weight: 600;
-  outline: none;
-  transition: border 0.2s;
+.floating-topbar > * {
+  pointer-events: auto;
 }
 
-input:focus,
-select:focus {
-  border-color: var(--neon-pink);
+.glass-icon-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, border-color 0.2s ease;
 }
 
-/* Nupud */
-.btn {
+.glass-icon-btn:active {
+  transform: scale(0.93);
+}
+
+.glass-icon-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.2px;
+}
+
+.brand-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 10px var(--accent-primary);
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.pro-tag {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: #04130e;
+  letter-spacing: 0.04em;
+}
+
+/* Kaardikihtide kiirriba */
+.map-layer-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.layer-chip {
+  pointer-events: auto;
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.layer-chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.layer-chip.active {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Kaardi parempoolsed kiirtööriistad */
+.map-floating-tools {
+  position: absolute;
+  right: 16px;
+  top: 128px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tool-fab {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.tool-fab:active {
+  transform: scale(0.92);
+}
+
+.tool-fab svg {
+  width: 19px;
+  height: 19px;
+}
+
+.tool-fab.danger {
+  color: #f87171;
+}
+
+/* ==========================================================================
+   ALUMINE KOMPAKTNE HUD (SAMMUDE RING & JUHTPANEEL)
+   ========================================================================== */
+
+.bottom-hud {
+  position: relative;
+  z-index: 10;
+  margin: auto 12px max(12px, env(safe-area-inset-bottom));
+  padding: 16px;
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hud-main-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Kompaktne Sammude Ring */
+.step-ring-container {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  flex-shrink: 0;
+}
+
+.step-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 8;
+}
+
+.ring-progress {
+  fill: none;
+  stroke: url(#ringGradient);
+  stroke: var(--accent-primary);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 263.89; /* 2 * PI * 42 */
+  stroke-dashoffset: 263.89;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.ring-center-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.ring-percent {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.ring-foot-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-primary);
+}
+
+/* Sammude numbrid ja mõõdikud */
+.hud-stats-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.primary-step-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.steps-big-number {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.steps-goal-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.hud-mini-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(9, 13, 22, 0.55);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mini-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.mini-metric svg {
+  width: 13px;
+  height: 13px;
+  color: var(--accent-primary);
+  align-self: center;
+}
+
+.mini-metric span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mini-metric small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.metric-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border-subtle);
+}
+
+/* Alumised tegevusnupud */
+.hud-action-row {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-start-walk {
+  flex: 1;
+  height: 48px;
+  border: none;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #03150e;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 13px 18px;
-  border-radius: 14px;
-  font-size: 0.96rem;
-  font-weight: 700;
-  border: none;
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.2s;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-.btn:active {
+.btn-start-walk:active {
   transform: scale(0.98);
 }
 
-.btn-full {
-  width: 100%;
-  margin-top: 8px;
+.btn-start-walk.walking-active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
-  color: #fff;
-  box-shadow: 0 4px 18px rgba(255, 30, 142, 0.4);
+.btn-start-walk svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 2.5px;
 }
 
-.btn-secondary {
-  background: #271545;
-  color: #fff;
-  border: 1px solid var(--neon-pink);
-}
-
-.btn-outline {
-  background: transparent;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text-muted);
-  font-weight: 500;
-  margin-top: 6px;
-}
-
-.btn-sm {
-  font-size: 0.8rem;
-  padding: 8px 12px;
-}
-
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--neon-pink);
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.divider {
-  text-align: center;
-  margin: 16px 0 8px;
-  position: relative;
-}
-
-.divider span {
-  background: var(--bg-card);
-  padding: 0 10px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-}
-
-/* Päis ja navigatsioon */
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 14px;
-}
-
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.mini-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
+.btn-secondary-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 0.9rem;
-  box-shadow: 0 0 12px rgba(255, 30, 142, 0.5);
+  cursor: pointer;
 }
 
-.brand-title-sm {
-  font-size: 1.35rem;
-  font-weight: 800;
+.btn-secondary-icon:active {
+  transform: scale(0.94);
 }
 
-.header-actions {
+/* ==========================================================================
+   LIUGMENÜÜ (SLIDE-OUT DRAWER)
+   ========================================================================== */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
+.drawer-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(330px, 86vw);
+  background: #0c1220;
+  border-right: 1px solid var(--border-subtle);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-102%);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 16px 0 48px rgba(0, 0, 0, 0.65);
+}
+
+.sidebar-drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-profile {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  padding: max(20px, env(safe-area-inset-top)) 18px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
 }
 
-.streak-badge {
-  background: rgba(255, 30, 142, 0.16);
-  border: 1px solid var(--neon-pink);
-  padding: 6px 10px;
-  border-radius: 20px;
-  font-weight: 700;
-  font-size: 0.85rem;
+.profile-avatar-wrap {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-primary);
+  padding: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.profile-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1e293b;
+}
+
+.avatar-edit-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #03150e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-edit-badge svg {
+  width: 11px;
+  height: 11px;
+}
+
+.profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-name-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.profile-name-btn .edit-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+}
+
+.profile-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary);
 }
 
 .icon-btn {
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #fff;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.main-nav {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.nav-btn {
-  flex: 1;
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-muted);
-  padding: 11px;
-  border-radius: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.nav-btn.active {
-  background: rgba(255, 30, 142, 0.18);
-  border-color: var(--neon-pink);
-  color: #fff;
-}
-
-.tab-content {
-  display: none;
-}
-
-.tab-content.active {
-  display: block;
-}
-
-/* Kaardid (Cards) */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
-}
-
-.card-row {
-  display: flex;
-  gap: 12px;
-}
-
-.input-col {
-  flex: 1;
-}
-
-.route-preview-info {
-  margin: 12px 0;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.route-preview-info strong {
-  color: var(--neon-pink);
-}
-
-.checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--bg-input);
-  padding: 10px 14px;
-  border-radius: 12px;
-  margin-bottom: 10px;
-  cursor: pointer;
-}
-
-.checkbox-row input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--neon-pink);
-}
-
-.checkbox-label {
-  color: #fff;
-  font-size: 0.88rem;
-}
-
-/* Sammulugeja vaade */
-.tracker-card {
-  text-align: center;
-}
-
-.progress-ring-container {
-  margin: 10px auto 18px;
-  width: 165px;
-  height: 165px;
-  border-radius: 50%;
-  border: 6px solid rgba(255, 30, 142, 0.25);
-  border-top-color: var(--neon-pink);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 25px rgba(255, 30, 142, 0.25);
+  cursor: pointer;
 }
 
-.big-number {
-  display: block;
-  font-size: 2.5rem;
-  font-weight: 800;
-  line-height: 1;
+/* Menüüpunktid */
+.drawer-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.steps-label {
-  font-size: 0.78rem;
-  color: var(--neon-pink);
-  font-weight: 700;
-  letter-spacing: 1.5px;
+.nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 12px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.stats-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 14px;
+.nav-item:hover,
+.nav-item:active {
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.stat-box {
-  background: var(--bg-input);
-  padding: 10px 6px;
+.nav-item.active {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.nav-icon {
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+  flex-shrink: 0;
 }
 
-.stat-val {
-  display: block;
-  font-size: 1.15rem;
-  font-weight: 800;
+.nav-item.active .nav-icon {
+  background: var(--accent-primary);
+  color: #03150e;
 }
 
-.stat-lbl {
-  font-size: 0.73rem;
+.nav-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.nav-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nav-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-arrow {
+  width: 16px;
+  height: 16px;
   color: var(--text-muted);
 }
 
-/* Kaart */
-.map-card {
-  padding: 6px;
-  overflow: hidden;
+.drawer-footer {
+  padding: 14px 18px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-#map {
-  width: 100%;
-  height: 290px;
-  border-radius: 15px;
-  background: #10081c;
+.storage-guarantee {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
 }
 
-/* Statistika vaade */
-.stats-overview-grid {
+.storage-guarantee svg {
+  width: 15px;
+  height: 15px;
+}
+
+.version-tag {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   ALAMVAATED / MODAALID (STATISTIKA, SYNC, SEADED, PWA, ABI)
+   ========================================================================== */
+
+.subview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: var(--bg-deep);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(102%);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.subview-modal.open {
+  transform: translateY(0);
+}
+
+.subview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(16px, env(safe-area-inset-top)) 18px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: #0c1220;
+}
+
+.subview-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subview-header-icon {
+  color: var(--accent-primary);
+  width: 22px;
+  height: 22px;
+}
+
+.subview-header h2 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.subview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.subview-lead {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Statistika kaardid */
+.permanent-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-size: 12px;
+  color: #a7f3d0;
+}
+
+.permanent-badge svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.stats-grid-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
-.stat-highlight {
-  text-align: center;
-  padding: 20px 12px;
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.stat-highlight .stat-val {
-  font-size: 1.7rem;
-  color: var(--neon-pink);
+.stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
-.section-title {
-  font-size: 1rem;
-  margin-bottom: 12px;
+.stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.section-subtitle {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-top: 6px;
 }
 
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .history-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: var(--bg-input);
+  justify-content: space-between;
   padding: 12px 14px;
-  border-radius: 12px;
-  border-left: 4px solid var(--neon-pink);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.history-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .history-date {
-  font-size: 0.78rem;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-/* Teated ja vead */
-.auth-message {
-  font-size: 0.85rem;
-  margin-bottom: 8px;
-  text-align: center;
+.history-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
-.error-banner {
-  background: rgba(255, 77, 109, 0.15);
-  border: 1px solid var(--danger);
-  color: #ffb3c1;
-  padding: 10px 12px;
+.history-steps-badge {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--accent-primary);
+}
+
+/* Sünkroniseerimise kaardid */
+.sync-category-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-primary);
+  margin-top: 4px;
+}
+
+.sync-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sync-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.sync-card-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.provider-icon {
+  width: 42px;
+  height: 42px;
   border-radius: 12px;
-  font-size: 0.84rem;
-  margin-bottom: 10px;
-}
-
-/* Modaalaknad */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(5, 2, 10, 0.82);
-  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18px;
-  z-index: 2000;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-primary);
+  flex-shrink: 0;
 }
 
-.modal-box {
-  background: var(--bg-card);
-  border: 1px solid var(--neon-pink);
-  border-radius: 22px;
-  padding: 22px;
-  width: 100%;
-  max-width: 400px;
+.sync-card h4 {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.modal-header {
+.sync-card p {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.btn-connect {
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-primary);
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-primary);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-connect.connected {
+  background: var(--accent-primary);
+  color: #03150e;
+}
+
+/* Seaded */
+.settings-group {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.2rem;
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setting-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.pro-input,
+.pro-select {
+  width: 115px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: #090d16;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.btn-full-action {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   cursor: pointer;
 }
 
-.modal-desc {
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-}
-
-.calc-preview {
-  text-align: center;
-  padding: 12px;
-  background: var(--bg-input);
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-
-.calc-preview strong {
-  color: var(--neon-pink);
-  font-size: 1.2rem;
-}
-
-.pwa-steps {
+/* PWA & Abi kaardid */
+.pwa-hero-card,
+.help-card {
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-  font-size: 0.86rem;
+  gap: 10px;
 }
 
-.pwa-step {
-  background: var(--bg-input);
-  padding: 12px;
-  border-radius: 12px;
+.pwa-icon-big {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--accent-primary);
+}
+
+.help-card p,
+.pwa-hero-card p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.install-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.instruction-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
