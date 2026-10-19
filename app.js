@@ -1,16 +1,59 @@
 /* ==========================================================================
-   GOWALK PRO — APPLICATION LOGIC (STEP 1: UI, DRAWER, MAP & PERMANENT STORAGE)
+   GOWALK PRO — APPLICATION LOGIC
+   STEP 2: SUPABASE CLOUD SYNC, USER SESSION & PERMANENT STORAGE
    ========================================================================== */
 
-document.addEventListener('DOMContentLoaded', () => {
-  // 1. Initsialiseeri Lucide vektorikoonid
+// 1. SUPABASE SEADISTUS (Sisesta siia oma Supabase projekti URL ja Anon/Public Key)
+const SUPABASE_URL = '[https://bktvebmplrabwbgwawao.supabase.co](https://bktvebmplrabwbgwawao.supabase.co)
+
+'; // nt 'https://xyzcompany.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // nt 'eyJhbGciOiJIUzI1NiIsInR5cCI...'
+
+let supabaseClient = null;
+let currentUser = null;
+let syncTimeout = null;
+
+// Abifunktsioon Supabase SDK automaatseks laadimiseks, kui seda pole index.html-is
+async function ensureSupabaseSDK() {
+  if (window.supabase && typeof window.supabase.createClient === 'function') {
+    return window.supabase;
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+    script.async = true;
+    script.onload = () => resolve(window.supabase);
+    script.onerror = () => reject(new Error('Supabase SDK laadimine ebaõnnestus'));
+    document.head.appendChild(script);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Initsialiseeri Lucide vektorikoonid
   if (window.lucide) {
     lucide.createIcons();
   }
 
-  // 2. Püsivate andmete struktuur (mitte midagi ei kustu kunagi)
+  // ==========================================================================
+  // KOHALIK JA PILVE ANDMESTRUKTUUR (MITTE MIDAGI EI KUSTU KUNAGI)
+  // ==========================================================================
+
   const STORAGE_KEY = 'gowalk_pro_permanent_v2';
+  const DEVICE_ID_KEY = 'gowalk_pro_device_uid';
+
+  // Genereeri püsiv seadme/kasutaja ID juhuks, kui kasutaja pole veel sisse loginud
+  function getOrCreateDeviceId() {
+    let uid = localStorage.getItem(DEVICE_ID_KEY);
+    if (!uid) {
+      uid = 'gw_' + crypto.randomUUID();
+      localStorage.setItem(DEVICE_ID_KEY, uid);
+    }
+    return uid;
+  }
+
   const defaultState = {
+    userId: getOrCreateDeviceId(),
+    email: null,
     profile: {
       name: 'Kõndija Pro',
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GoWalkPro'
@@ -28,44 +71,255 @@ document.addEventListener('DOMContentLoaded', () => {
       durationSec: 0
     },
     connectedProviders: {},
-    history: [] // Kõik varasemad päevad ja kõnnid jäävad alatiseks alles
+    history: [], // Kõik varasemad päevad ja kõnnid jäävad alatiseks alles
+    updatedAt: new Date().toISOString()
   };
 
   let state = loadState();
+
+  function checkDayRollover(targetState) {
+    const currentDay = new Date().toISOString().slice(0, 10);
+    if (targetState.today && targetState.today.date !== currentDay) {
+      if (targetState.today.steps > 0) {
+        targetState.history = targetState.history || [];
+        // Väldi topeltkirjeid samale kuupäevale
+        const exists = targetState.history.some(h => h.date === targetState.today.date && h.steps === targetState.today.steps);
+        if (!exists) {
+          targetState.history.unshift({ ...targetState.today });
+        }
+      }
+      targetState.today = {
+        date: currentDay,
+        steps: 0,
+        distanceKm: 0,
+        calories: 0,
+        durationSec: 0
+      };
+    }
+  }
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return structuredClone(defaultState);
       const parsed = JSON.parse(raw);
-
-      // Kui on alanud uus kuupäev, arhiveeri eilne päev ajalukku (mitte kunagi ära kustuta!)
-      const currentDay = new Date().toISOString().slice(0, 10);
-      if (parsed.today && parsed.today.date !== currentDay) {
-        if (parsed.today.steps > 0) {
-          parsed.history = parsed.history || [];
-          parsed.history.unshift({ ...parsed.today });
-        }
-        parsed.today = {
-          date: currentDay,
-          steps: 0,
-          distanceKm: 0,
-          calories: 0,
-          durationSec: 0
-        };
-      }
-      return { ...defaultState, ...parsed };
+      checkDayRollover(parsed);
+      return {
+        ...defaultState,
+        ...parsed,
+        profile: { ...defaultState.profile, ...(parsed.profile || {}) },
+        settings: { ...defaultState.settings, ...(parsed.settings || {}) },
+        today: { ...defaultState.today, ...(parsed.today || {}) },
+        history: Array.isArray(parsed.history) ? parsed.history : []
+      };
     } catch (e) {
-      console.error('Andmete laadimise viga:', e);
+      console.error('Kohalike andmete laadimise viga:', e);
       return structuredClone(defaultState);
     }
   }
 
-  function saveState() {
+  function saveState(skipCloud = false) {
     try {
+      state.updatedAt = new Date().toISOString();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (!skipCloud) {
+        scheduleCloudSync();
+      }
     } catch (e) {
       console.error('Salvestamise viga:', e);
+    }
+  }
+
+  // ==========================================================================
+  // SUPABASE INITSIALISEERIMINE, SESSIOON & PILVESÜNKRONISEERIMINE
+  // ==========================================================================
+
+  const userSyncBadge = document.getElementById('userSyncBadge');
+  const statusDot = document.querySelector('.status-dot');
+
+  function updateSyncStatusUI(statusText, isOnline = true) {
+    if (userSyncBadge) userSyncBadge.textContent = statusText;
+    if (statusDot) {
+      statusDot.style.background = isOnline ? '#10b981' : '#f59e0b';
+      statusDot.style.boxShadow = isOnline ? '0 0 10px #10b981' : '0 0 10px #f59e0b';
+    }
+  }
+
+  function isSupabaseConfigured() {
+    return (
+      SUPABASE_URL &&
+      SUPABASE_ANON_KEY &&
+      !SUPABASE_URL.includes('SINU_SUPABASE') &&
+      !SUPABASE_ANON_KEY.includes('SINU_SUPABASE')
+    );
+  }
+
+  async function initSupabaseAndSession() {
+    if (!isSupabaseConfigured()) {
+      updateSyncStatusUI('Kohalik mälu (Lisa Supabase võti)', false);
+      return;
+    }
+
+    try {
+      updateSyncStatusUI('Ühendan pilvega...', true);
+      const supabaseLib = await ensureSupabaseSDK();
+      supabaseClient = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true
+        }
+      });
+
+      // 1. Kontrolli olemasolevat sessiooni
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (sessionData?.session?.user) {
+        currentUser = sessionData.session.user;
+      } else {
+        // 2. Proovi luua automaatne anonüümne sessioon
+        const { data: anonData, error: anonError } = await supabaseClient.auth.signInAnonymously();
+        if (!anonError && anonData?.user) {
+          currentUser = anonData.user;
+        }
+      }
+
+      if (currentUser) {
+        state.userId = currentUser.id;
+        state.email = currentUser.email || null;
+        if (currentUser.user_metadata?.full_name) {
+          state.profile.name = currentUser.user_metadata.full_name;
+        }
+        if (currentUser.user_metadata?.avatar_url) {
+          state.profile.avatar = currentUser.user_metadata.avatar_url;
+        }
+        renderProfile();
+      }
+
+      // Kuula sisselogimise muutusi (nt kui kasutaja logib Google'iga sisse)
+      supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          currentUser = session.user;
+          state.userId = currentUser.id;
+          state.email = currentUser.email || null;
+          renderProfile();
+          await pullFromCloud();
+        }
+      });
+
+      // Tõmba pilvest varasemad andmed ja ühenda kohalikega
+      await pullFromCloud();
+      // Sünkroniseeri viimane seis tagasi pilve
+      await syncToCloudNow();
+
+    } catch (err) {
+      console.warn('Supabase initsialiseerimise hoiatus:', err);
+      updateSyncStatusUI('Võrguühenduseta • Kaitstud lokaalselt', false);
+    }
+  }
+
+  // Ühendab pilve ja kohaliku ajaloo nii, et mitte ükski samm ega päev ei lähe kaotsi
+  function mergeHistories(localHist = [], cloudHist = []) {
+    const map = new Map();
+    [...cloudHist, ...localHist].forEach(item => {
+      if (!item || !item.date) return;
+      const key = `${item.date}_${item.steps}`;
+      const existing = map.get(item.date);
+      if (!existing || (item.steps || 0) > (existing.steps || 0)) {
+        map.set(item.date, item);
+      } else if (!map.has(key)) {
+        map.set(key, item);
+      }
+    });
+    return Array.from(map.values());
+  }
+
+  async function pullFromCloud() {
+    if (!supabaseClient) return;
+    const activeId = currentUser?.id || state.userId;
+
+    try {
+      const { data, error } = await supabaseClient
+        .from('user_walk_data')
+        .select('*')
+        .eq('user_id', activeId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data && data.payload) {
+        const cloud = data.payload;
+        checkDayRollover(cloud);
+
+        // Võta tänase päeva suurim sammude arv (et midagi ei läheks kaduma)
+        if (cloud.today && cloud.today.date === state.today.date) {
+          if ((cloud.today.steps || 0) > state.today.steps) {
+            state.today = { ...cloud.today };
+          }
+        }
+
+        // Ühenda kogu varasem ajalugu
+        state.history = mergeHistories(state.history, cloud.history || []);
+
+        // Taasta profiil ja seaded, kui kohalik on veel vaikimisi
+        if (cloud.profile?.name && state.profile.name === 'Kõndija Pro') {
+          state.profile.name = cloud.profile.name;
+        }
+        if (cloud.profile?.avatar && state.profile.avatar.includes('seed=GoWalkPro')) {
+          state.profile.avatar = cloud.profile.avatar;
+        }
+        if (cloud.settings) {
+          state.settings = { ...state.settings, ...cloud.settings };
+        }
+        if (cloud.connectedProviders) {
+          state.connectedProviders = { ...cloud.connectedProviders, ...state.connectedProviders };
+        }
+
+        saveState(true);
+        renderProfile();
+        updateHudUI();
+      }
+      updateSyncStatusUI('Andmed kaitstud • Pilves ✓', true);
+    } catch (err) {
+      console.warn('Pilvest laadimise info:', err.message);
+      updateSyncStatusUI('Kaitstud lokaalselt', false);
+    }
+  }
+
+  function scheduleCloudSync() {
+    if (!supabaseClient) return;
+    updateSyncStatusUI('Sünkroniseerin pilvega...', true);
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      syncToCloudNow();
+    }, 1200);
+  }
+
+  async function syncToCloudNow() {
+    if (!supabaseClient) return;
+    const activeId = currentUser?.id || state.userId;
+
+    const totalHistoricalSteps = state.history.reduce((sum, h) => sum + (h.steps || 0), 0) + state.today.steps;
+
+    try {
+      const { error } = await supabaseClient
+        .from('user_walk_data')
+        .upsert(
+          {
+            user_id: activeId,
+            email: state.email || null,
+            display_name: state.profile.name,
+            today_steps: state.today.steps,
+            total_steps: totalHistoricalSteps,
+            payload: state,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (error) throw error;
+      updateSyncStatusUI('Andmed kaitstud • Pilves ✓', true);
+    } catch (err) {
+      console.warn('Pilve salvestamise hoiatus:', err.message);
+      updateSyncStatusUI('Ootel (Salvestatud seadmesse)', false);
     }
   }
 
@@ -94,7 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
   closeDrawerBtn.addEventListener('click', closeDrawer);
   drawerOverlay.addEventListener('click', closeDrawer);
 
-  // Menüüpunktidele vajutamine
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const targetId = item.getAttribute('data-target');
@@ -102,7 +355,6 @@ document.addEventListener('DOMContentLoaded', () => {
       item.classList.add('active');
       closeDrawer();
 
-      // Sulge kõik avatud alamvaated
       subviewModals.forEach(m => m.classList.remove('open'));
 
       if (targetId !== 'home') {
@@ -117,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Alamvaadete sulgemisnupud
   document.querySelectorAll('.close-subview').forEach(btn => {
     btn.addEventListener('click', () => {
       subviewModals.forEach(m => m.classList.remove('open'));
@@ -126,8 +377,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Kiire sünkroniseerimise nupp üleval paremal
   document.getElementById('quickSyncBtn').addEventListener('click', () => {
+    syncToCloudNow();
     document.getElementById('syncModal').classList.add('open');
   });
 
@@ -154,329 +405,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('editAvatarBtn').addEventListener('click', () => {
     const randomSeed = 'GoWalk_' + Math.floor(Math.random() * 9999);
-    state.profile.avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${randomSeed}`;
-    saveState();
-    renderProfile();
-  });
-
-  // ==========================================================================
-  // TÄISEKRAANI KAART (4 KIHTI + LOHISTATAV PIN A + VAHEPUNKTID)
-  // ==========================================================================
-
-  const map = L.map('map', {
-    zoomControl: false,
-    attributionControl: true
-  }).setView([58.3859, 24.4971], 14); // Vaikimisi Pärnu / Eesti vaade
-
-  const tileLayers = {
-    dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      className: 'map-tiles-dark',
-      attribution: '© Google Maps'
-    }),
-    light: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    }),
-    hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    }),
-    terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    })
-  };
-
-  let activeLayer = tileLayers[state.settings.mapLayer] || tileLayers.dark;
-  activeLayer.addTo(map);
-
-  function switchMapLayer(layerKey) {
-    if (!tileLayers[layerKey]) return;
-    map.removeLayer(activeLayer);
-    activeLayer = tileLayers[layerKey];
-    activeLayer.addTo(map);
-    state.settings.mapLayer = layerKey;
-    saveState();
-
-    document.querySelectorAll('.layer-chip').forEach(chip => {
-      chip.classList.toggle('active', chip.dataset.layer === layerKey);
-    });
-    document.getElementById('settingMapStyle').value = layerKey;
-  }
-
-  document.querySelectorAll('.layer-chip').forEach(chip => {
-    chip.addEventListener('click', () => switchMapLayer(chip.dataset.layer));
-  });
-
-  // Alguspunkt (Pin A - vabalt lohistatav) ja vahepunktid
-  let waypoints = [];
-  let markers = [];
-  let routeLine = L.polyline([], {
-    color: '#10b981',
-    weight: 5,
-    opacity: 0.9
-  }).addTo(map);
-
-  function createPinIcon(label, isStart = false) {
-    const bg = isStart ? '#10b981' : '#06b6d4';
-    return L.divIcon({
-      className: 'custom-map-pin',
-      html: `<div style="
-        width:28px;height:28px;border-radius:50%;
-        background:${bg};color:#03150e;font-family:'Plus Jakarta Sans',sans-serif;
-        font-weight:800;font-size:12px;display:flex;align-items:center;
-        justify-content:center;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.45);
-      ">${label}</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14]
-    });
-  }
-
-  function recalculateRouteMetrics() {
-    let totalMeters = 0;
-    for (let i = 1; i < waypoints.length; i++) {
-      totalMeters += map.distance(waypoints[i - 1], waypoints[i]);
-    }
-    const routeKm = totalMeters / 1000;
-    const strideMeters = (state.settings.strideCm || 76) / 100;
-    const routeSteps = Math.round(totalMeters / strideMeters);
-
-    if (waypoints.length > 1) {
-      state.today.distanceKm = +(routeKm).toFixed(2);
-      state.today.steps = Math.max(state.today.steps, routeSteps);
-      state.today.calories = Math.round(state.today.steps * 0.04);
-      saveState();
-      updateHudUI();
-    }
-  }
-
-  function rebuildWaypoints() {
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
-    routeLine.setLatLngs(waypoints);
-
-    waypoints.forEach((latlng, idx) => {
-      const label = idx === 0 ? 'A' : idx;
-      const marker = L.marker(latlng, {
-        draggable: true,
-        icon: createPinIcon(label, idx === 0)
-      }).addTo(map);
-
-      marker.on('drag', e => {
-        waypoints[idx] = e.target.getLatLng();
-        routeLine.setLatLngs(waypoints);
-        recalculateRouteMetrics();
-      });
-
-      markers.push(marker);
-    });
-
-    recalculateRouteMetrics();
-  }
-
-  map.on('click', e => {
-    waypoints.push(e.latlng);
-    rebuildWaypoints();
-  });
-
-  document.getElementById('undoWaypointBtn').addEventListener('click', () => {
-    if (waypoints.length > 0) {
-      waypoints.pop();
-      rebuildWaypoints();
-    }
-  });
-
-  document.getElementById('clearRouteBtn').addEventListener('click', () => {
-    waypoints = [];
-    rebuildWaypoints();
-  });
-
-  document.getElementById('locateMeBtn').addEventListener('click', () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(pos => {
-      const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      map.setView(latlng, 16);
-      if (waypoints.length === 0) {
-        waypoints.push(latlng);
-        rebuildWaypoints();
-      }
-    });
-  });
-
-  // ==========================================================================
-  // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE
-  // ==========================================================================
-
-  const RING_CIRCUMFERENCE = 2 * Math.PI * 42; // r=42
-  let isWalking = false;
-  let walkTimer = null;
-
-  function formatDuration(sec) {
-    const m = String(Math.floor(sec / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    return `${m}:${s}`;
-  }
-
-  function updateHudUI() {
-    const steps = state.today.steps;
-    const goal = state.settings.stepGoal || 10000;
-    const pct = Math.min(100, Math.round((steps / goal) * 100));
-
-    document.getElementById('liveSteps').textContent = steps.toLocaleString('et-EE');
-    document.getElementById('goalStepsLabel').textContent = goal.toLocaleString('et-EE');
-    document.getElementById('stepPercentText').textContent = `${pct}%`;
-
-    const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
-    document.getElementById('stepRingProgress').style.strokeDashoffset = offset;
-
-    const strideMeters = (state.settings.strideCm || 76) / 100;
-    const calcKm = ((steps * strideMeters) / 1000).toFixed(2);
-    state.today.distanceKm = Math.max(state.today.distanceKm, parseFloat(calcKm));
-    state.today.calories = Math.round(steps * 0.04);
-
-    document.getElementById('liveDistance').textContent = state.today.distanceKm.toFixed(2);
-    document.getElementById('liveCalories').textContent = state.today.calories;
-    document.getElementById('liveDuration').textContent = formatDuration(state.today.durationSec);
-  }
-
-  const startWalkBtn = document.getElementById('startWalkBtn');
-  const startWalkText = document.getElementById('startWalkText');
-
-  startWalkBtn.addEventListener('click', () => {
-    isWalking = !isWalking;
-    startWalkBtn.classList.toggle('walking-active', isWalking);
-
-    if (isWalking) {
-      startWalkText.textContent = 'Peata ja salvesta kõnd';
-      walkTimer = setInterval(() => {
-        state.today.durationSec += 1;
-        state.today.steps += 2; // Simulatsioon/anduri tugi aktiivsel kõnnil
-        updateHudUI();
-      }, 1000);
-    } else {
-      clearInterval(walkTimer);
-      startWalkText.textContent = 'Alusta kõndimist';
-      // Salvesta lõpetatud jalutuskäik alalisse ajalukku
-      if (state.today.steps > 0) {
-        state.history.unshift({
-          date: new Date().toLocaleString('et-EE'),
-          steps: state.today.steps,
-          distanceKm: state.today.distanceKm,
-          calories: state.today.calories
-        });
-        saveState();
-      }
-    }
-  });
-
-  // Sammude käsitsi kiirlisamine (+)
-  document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
-    const input = prompt('Lisa sammud käsitsi:', '1000');
-    const added = parseInt(input, 10);
-    if (!isNaN(added) && added > 0) {
-      state.today.steps += added;
-      saveState();
-      updateHudUI();
-    }
-  });
-
-  // ==========================================================================
-  // STATISTIKA, TERVISE SÜNKRONISEERIMINE & SEADED
-  // ==========================================================================
-
-  function renderStatsAndHistory() {
-    const historicalSteps = state.history.reduce((sum, item) => sum + (item.steps || 0), 0);
-    const totalSteps = historicalSteps + state.today.steps;
-    const totalKm = ((totalSteps * (state.settings.strideCm / 100)) / 1000).toFixed(1);
-
-    document.getElementById('statTotalSteps').textContent = totalSteps.toLocaleString('et-EE');
-    document.getElementById('statTotalKm').textContent = `${totalKm} km`;
-    document.getElementById('statTotalWalks').textContent = state.history.length + (state.today.steps > 0 ? 1 : 0);
-    document.getElementById('statStreak').textContent = `${Math.max(1, state.history.length + 1)} päeva`;
-
-    const historyList = document.getElementById('historyList');
-    historyList.innerHTML = '';
-
-    const allRecords = [
-      {
-        date: `Täna (${state.today.date})`,
-        steps: state.today.steps,
-        distanceKm: state.today.distanceKm,
-        calories: state.today.calories
-      },
-      ...state.history
-    ];
-
-    allRecords.forEach(rec => {
-      const row = document.createElement('div');
-      row.className = 'history-item';
-      row.innerHTML = `
-        <div class="history-item-left">
-          <span class="history-date">${rec.date}</span>
-          <span class="history-meta">${Number(rec.distanceKm || 0).toFixed(2)} km • ${rec.calories || 0} kcal</span>
-        </div>
-        <span class="history-steps-badge">${Number(rec.steps || 0).toLocaleString('et-EE')} sammu</span>
-      `;
-      historyList.appendChild(row);
-    });
-  }
-
-  // Terviseandmete ühendamise nupud (Samsung, Apple, Health Connect, Fitbit, Xiaomi, Garmin, Huawei)
-  document.querySelectorAll('[data-connect]').forEach(btn => {
-    const provider = btn.getAttribute('data-connect');
-    if (state.connectedProviders[provider]) {
-      btn.classList.add('connected');
-      btn.textContent = 'Ühendatud ✓';
-    }
-
-    btn.addEventListener('click', () => {
-      const isConnected = !state.connectedProviders[provider];
-      state.connectedProviders[provider] = isConnected;
-      btn.classList.toggle('connected', isConnected);
-      btn.textContent = isConnected ? 'Ühendatud ✓' : 'Ühenda';
-      saveState();
-    });
-  });
-
-  // Seadete salvestamine
-  const settingStepGoal = document.getElementById('settingStepGoal');
-  const settingStrideLength = document.getElementById('settingStrideLength');
-  const settingMapStyle = document.getElementById('settingMapStyle');
-
-  settingStepGoal.value = state.settings.stepGoal;
-  settingStrideLength.value = state.settings.strideCm;
-  settingMapStyle.value = state.settings.mapLayer;
-
-  settingStepGoal.addEventListener('change', e => {
-    state.settings.stepGoal = Math.max(1000, parseInt(e.target.value, 10) || 10000);
-    saveState();
-    updateHudUI();
-  });
-
-  settingStrideLength.addEventListener('change', e => {
-    state.settings.strideCm = Math.max(40, parseInt(e.target.value, 10) || 76);
-    saveState();
-    updateHudUI();
-  });
-
-  settingMapStyle.addEventListener('change', e => {
-    switchMapLayer(e.target.value);
-  });
-
-  // Kogu ajaloo eksportimine JSON failina
-  document.getElementById('exportDataBtn').addEventListener('click', () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute('href', dataStr);
-    dlAnchor.setAttribute('download', `gowalk_ajalugu_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
-  });
-
-  // Alglaadimine
-  renderProfile();
-  switchMapLayer(state.settings.mapLayer);
-  updateHudUI();
-});
