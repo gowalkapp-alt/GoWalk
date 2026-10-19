@@ -108,11 +108,16 @@ async function handleGoogleLogin() {
     setAuthMessage('Lisa esmalt app.js faili oma Supabase Publishable key!', true);
     return;
   }
+  
+  // Määrame sihtkohaks otse sinu Verceli veebiaadressi
+  const redirectToUrl = 'https://gowalk-eight.vercel.app/';
+
   await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin }
+    options: { redirectTo: redirectToUrl }
   });
 }
+
 
 function enterGuestMode() {
   currentUser = { id: 'guest', email: 'külaline' };
