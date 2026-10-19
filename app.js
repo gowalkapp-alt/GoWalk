@@ -255,23 +255,22 @@ function initMap() {
   if (map) return;
 
   // Initsialiseerime kaardi
-  map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
+  map = L.map('map', {
+    zoomControl: false // Viime pluss-miinuse nupud vajadusel mujale
+  }).setView([userCoords.lat, userCoords.lng], 14);
 
-  // Kasutame standardset kaarti ja muudame selle CSS-filtriga stiilselt tumedaks
-  const darkLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  // Lisame standardse kaardi kihi
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
-  });
+  }).addTo(map);
 
-  darkLayer.addTo(map);
-
-  // Rakendame kaardile tumeda filtri, et see näeks välja nagu Google Maps dark mode
+  // Rakendame kaardikonteinerile tumeda Google Mapsi stiilis filtri
   setTimeout(() => {
-    const mapContainer = document.querySelector('.leaflet-tile-pane');
-    if (mapContainer) {
-      mapContainer.style.filter = 'invert(100%) hue-rotate(180deg) brightness(90%) contrast(90%)';
+    const tilePane = document.querySelector('.leaflet-tile-pane');
+    if (tilePane) {
+      tilePane.style.filter = 'invert(100%) hue-rotate(180deg) brightness(85%) contrast(90%)';
     }
-  }, 200);
+  }, 150);
 
   // Geolokatsioon ja markerid
   if ('geolocation' in navigator) {
