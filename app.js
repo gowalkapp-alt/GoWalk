@@ -254,14 +254,17 @@ document.addEventListener('visibilitychange', async () => {
 function initMap() {
   if (map) return;
 
+  // Initsialiseerime kaardi
   map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
 
-  // Kasutame tumedat OpenFreeMapi kihti, mis ei vaja kunagi API võtit
-  L.tileLayer('https://tiles.openfreemap.org/styles/liberty/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+  // Kasutame CartoDB ametlikku tasuta tumedat aluskaarti (stabiilne ja võtmeta)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CartoDB</a>',
+    subdomains: 'abcd',
     maxZoom: 19
   }).addTo(map);
 
+  // Geolokatsioon ja markerid (jäävad samaks)
   if ('geolocation' in navigator) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -276,6 +279,7 @@ function initMap() {
     placeUserMarker();
   }
 }
+
 
 
 function placeUserMarker() {
