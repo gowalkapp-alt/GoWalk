@@ -2,12 +2,14 @@
 // 1. SUPABASE SEADISTUS
 // =========================================================
 const SUPABASE_URL = 'https://bktvebmplrabwbgwawao.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // <-- Pane oma võti siia!
+const SUPABASE_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // <-- Kleebi oma võti siia kord
 
 let supabaseClient = null;
-if (window.supabase && SUPABASE_KEY !== 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO') {
+if (window.supabase) {
+  // Kontrollime otse, et võti pole tühi ega vaikimisi tekst
   supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
+
 
 // Globaalsed olekud
 let currentUser = null;
