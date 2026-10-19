@@ -4,7 +4,7 @@
    ========================================================================== */
 
 // 1. SUPABASE SEADISTUS (Sisesta siia oma Supabase projekti URL ja Anon/Public Key)
-const SUPABASE_URL = '[https://bktvebmplrabwbgwawao.supabase.co](https://bktvebmplrabwbgwawao.supabase.co)
+const SUPABASE_URL = 'https://bktvebmplrabwbgwawao.supabase.co'
 
 '; // nt 'https://xyzcompany.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // nt 'eyJhbGciOiJIUzI1NiIsInR5cCI...'
