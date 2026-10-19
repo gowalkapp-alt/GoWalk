@@ -257,11 +257,21 @@ function initMap() {
   // Initsialiseerime kaardi
   map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
 
-  // Kasutame standardset OpenStreetMapi kihti, mis töötab alati ja igal pool
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Kasutame standardset kaarti ja muudame selle CSS-filtriga stiilselt tumedaks
+  const darkLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
-  }).addTo(map);
+  });
+
+  darkLayer.addTo(map);
+
+  // Rakendame kaardile tumeda filtri, et see näeks välja nagu Google Maps dark mode
+  setTimeout(() => {
+    const mapContainer = document.querySelector('.leaflet-tile-pane');
+    if (mapContainer) {
+      mapContainer.style.filter = 'invert(100%) hue-rotate(180deg) brightness(90%) contrast(90%)';
+    }
+  }, 200);
 
   // Geolokatsioon ja markerid
   if ('geolocation' in navigator) {
