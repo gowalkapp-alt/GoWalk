@@ -1,17 +1,22 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   STEP 2: SUPABASE CLOUD SYNC, USER SESSION & PERMANENT STORAGE
+   STEP 3: SUPABASE SYNC, GOOGLE AUTH, ADMIN PANEL, PROMO CODES & COUNTRY STATS
    ========================================================================== */
 
 // 1. SUPABASE SEADISTUS
 const SUPABASE_URL = 'https://bktvebmplrabwbgwawao.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // <-- Kleebi siia oma täispikk sb_publishable võti
 
+// 2. ADMINISTRAATORI E-POSTI AADRESSID (Mõlemad Google'i kontod)
+const ADMIN_EMAILS = [
+  'info.gowalk.app@gmail.com',
+  'karmo.riiel@gmail.com' // <-- Asenda see oma isikliku Gmaili aadressiga
+];
+
 let supabaseClient = null;
 let currentUser = null;
 let syncTimeout = null;
 
-// Abifunktsioon Supabase SDK automaatseks laadimiseks (kui index.html-is pole scripti)
 function ensureSupabaseSDK() {
   if (window.supabase && typeof window.supabase.createClient === 'function') {
     return Promise.resolve(window.supabase);
@@ -27,12 +32,10 @@ function ensureSupabaseSDK() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Initsialiseeri Lucide vektorikoonid
   if (window.lucide) {
     lucide.createIcons();
   }
 
-  // 2. PÜSIVATE ANDMETE STRUKTUUR (Mitte midagi ei kustu kunagi)
   const STORAGE_KEY = 'gowalk_pro_permanent_v2';
   const DEVICE_UID_KEY = 'gowalk_pro_device_uid';
 
@@ -47,13 +50,35 @@ document.addEventListener('DOMContentLoaded', () => {
     return uid;
   }
 
+  function detectCountryName() {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (tz.includes('Tallinn')) return '🇪🇪 Eesti';
+    if (tz.includes('Helsinki')) return '🇫🇮 Soome';
+    if (tz.includes('Riga')) return '🇱🇻 Läti';
+    if (tz.includes('Vilnius')) return '🇱🇹 Leedu';
+    if (tz.includes('Stockholm')) return '🇸🇪 Rootsi';
+    if (tz.includes('London')) return '🇬🇧 Suurbritannia';
+    if (tz.includes('Berlin')) return '🇩🇪 Saksamaa';
+    return tz || '🌍 Rahvusvaheline';
+  }
+
+  const defaultPromoCodes = [
+    { code: 'GOWALK30', discount: 30, label: '-30% Soodustus' },
+    { code: 'GOWALK50', discount: 50, label: '-50% Soodustus' },
+    { code: 'GOWALK70', discount: 70, label: '-70% Soodustus' },
+    { code: 'VIPFREE', discount: 100, label: 'TASUTA (100% PRO)' }
+  ];
+
   const defaultState = {
     userId: getOrCreateDeviceUid(),
+    isAdminUnlocked: false,
     profile: {
       name: 'Kõndija Pro',
       email: null,
       avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GoWalkPro',
-      country: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown'
+      country: detectCountryName(),
+      plan: 'Standard konto',
+      activePromo: null
     },
     settings: {
       stepGoal: 10000,
@@ -68,7 +93,8 @@ document.addEventListener('DOMContentLoaded', () => {
       durationSec: 0
     },
     connectedProviders: {},
-    history: [], // Kõik varasemad päevad ja kõnnid jäävad alatiseks alles
+    promoCodes: defaultPromoCodes,
+    history: [],
     updatedAt: new Date().toISOString()
   };
 
@@ -80,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!raw) return structuredClone(defaultState);
       const parsed = JSON.parse(raw);
 
-      // Kui on alanud uus kuupäev, arhiveeri eilne päev ajalukku (ära kunagi kustuta!)
       const currentDay = new Date().toISOString().slice(0, 10);
       if (parsed.today && parsed.today.date !== currentDay) {
         if (parsed.today.steps > 0) {
@@ -101,10 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ...parsed,
         profile: { ...defaultState.profile, ...(parsed.profile || {}) },
         settings: { ...defaultState.settings, ...(parsed.settings || {}) },
-        today: { ...defaultState.today, ...(parsed.today || {}) }
+        today: { ...defaultState.today, ...(parsed.today || {}) },
+        promoCodes:
+          Array.isArray(parsed.promoCodes) && parsed.promoCodes.length > 0
+            ? parsed.promoCodes
+            : defaultPromoCodes
       };
     } catch (e) {
-      console.error('Kohalike andmete laadimise viga:', e);
       return structuredClone(defaultState);
     }
   }
@@ -116,31 +144,116 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.error('Kohaliku salvestamise viga:', e);
     }
-
     if (!skipCloud) {
       scheduleCloudSync();
     }
   }
 
   // ==========================================================================
-  // 3. SUPABASE SESSIOON & PILVESÜNKRONISEERIMINE
+  // ADMIN LIGIPÄÄSU KONTROLL & GOOGLE SISSELOGIMINE
+  // ==========================================================================
+
+  const adminNavBtn = document.getElementById('adminNavBtn');
+  const googleAuthBtn = document.getElementById('googleAuthBtn');
+  const googleAuthText = document.getElementById('googleAuthText');
+  const adminActiveEmailText = document.getElementById('adminActiveEmailText');
+
+  function checkAdminAccess() {
+    const email = (state.profile.email || '').toLowerCase().trim();
+    const isEmailAdmin = ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(email);
+
+    if (isEmailAdmin || state.isAdminUnlocked) {
+      adminNavBtn.style.display = 'flex';
+      if (adminActiveEmailText) {
+        adminActiveEmailText.textContent = email
+          ? `Sisselogitud admin: ${email}`
+          : 'Admin vaade aktiveeritud';
+      }
+    } else {
+      adminNavBtn.style.display = 'none';
+    }
+  }
+
+  // Salajane 5-kliki avamine versiooninumbril "GoWalk Pro v2.0" (testimiseks igal ajal)
+  let secretTapCount = 0;
+  let secretTapTimer = null;
+  document.getElementById('versionSecretTrigger').addEventListener('click', () => {
+    secretTapCount += 1;
+    clearTimeout(secretTapTimer);
+    secretTapTimer = setTimeout(() => {
+      secretTapCount = 0;
+    }, 2000);
+
+    if (secretTapCount >= 5) {
+      secretTapCount = 0;
+      state.isAdminUnlocked = !state.isAdminUnlocked;
+      saveState();
+      checkAdminAccess();
+      alert(
+        state.isAdminUnlocked
+          ? '🛡️ Admin Paneel on nüüd menüüs avatud!'
+          : 'Admin Paneel peidetud.'
+      );
+    }
+  });
+
+  // Google sisselogimise nupp
+  googleAuthBtn.addEventListener('click', async () => {
+    if (!supabaseClient) {
+      alert('Supabase ühendus pole veel valmis.');
+      return;
+    }
+
+    if (state.profile.email) {
+      const confirmLogout = confirm(`Oled sisse logitud kui ${state.profile.email}. Kas soovid välja logida?`);
+      if (confirmLogout) {
+        await supabaseClient.auth.signOut();
+        state.profile.email = null;
+        saveState();
+        renderProfile();
+        checkAdminAccess();
+      }
+      return;
+    }
+
+    try {
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + window.location.pathname
+        }
+      });
+      if (error) throw error;
+    } catch (err) {
+      // Kui Google OAuth pole Supabase'is veel sisse lülitatud, luba e-posti käsitsi sidumine testimiseks
+      const manualEmail = prompt(
+        'Sisesta oma Google e-posti aadress (nt info.gowalk.app@gmail.com):',
+        ''
+      );
+      if (manualEmail && manualEmail.includes('@')) {
+        state.profile.email = manualEmail.trim();
+        saveState();
+        renderProfile();
+        checkAdminAccess();
+      }
+    }
+  });
+
+  // ==========================================================================
+  // SUPABASE SESSIOON & PILVESÜNKRONISEERIMINE
   // ==========================================================================
 
   const userSyncBadge = document.getElementById('userSyncBadge');
 
   function setSyncStatus(text, isOnline = true) {
-    if (userSyncBadge) {
-      userSyncBadge.textContent = text;
-    }
+    if (userSyncBadge) userSyncBadge.textContent = text;
     const dot = document.querySelector('.status-dot');
-    if (dot) {
-      dot.style.background = isOnline ? '#10b981' : '#f59e0b';
-    }
+    if (dot) dot.style.background = isOnline ? '#10b981' : '#f59e0b';
   }
 
   async function initSupabase() {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('...')) {
-      setSyncStatus('Kohalik mälu (Võti puudub)', false);
+      setSyncStatus('Kohalik mälu (Lisa võti)', false);
       return;
     }
 
@@ -148,45 +261,40 @@ document.addEventListener('DOMContentLoaded', () => {
       setSyncStatus('Ühendan pilvega...', true);
       const sdk = await ensureSupabaseSDK();
       supabaseClient = sdk.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true
-        }
+        auth: { persistSession: true, autoRefreshToken: true }
       });
 
-      // Kontrolli olemasolevat sessiooni
       const { data: sessionData } = await supabaseClient.auth.getSession();
-      if (sessionData && sessionData.session && sessionData.session.user) {
+      if (sessionData?.session?.user) {
         currentUser = sessionData.session.user;
       } else {
-        // Proovi luua automaatne anonüümne sessioon
-        const { data: anonData, error: anonError } = await supabaseClient.auth.signInAnonymously();
-        if (!anonError && anonData && anonData.user) {
-          currentUser = anonData.user;
-        }
+        const { data: anonData } = await supabaseClient.auth.signInAnonymously();
+        if (anonData?.user) currentUser = anonData.user;
       }
 
       if (currentUser) {
         state.userId = currentUser.id;
-        if (currentUser.email) {
-          state.profile.email = currentUser.email;
-        }
-        if (currentUser.user_metadata && currentUser.user_metadata.full_name) {
+        if (currentUser.email) state.profile.email = currentUser.email;
+        if (currentUser.user_metadata?.full_name) {
           state.profile.name = currentUser.user_metadata.full_name;
+        }
+        if (currentUser.user_metadata?.avatar_url) {
+          state.profile.avatar = currentUser.user_metadata.avatar_url;
         }
       }
 
-      // Laadi pilvest varasem seis ja ühenda kohalikuga (midagi ei lähe kaotsi)
+      renderProfile();
+      checkAdminAccess();
+
       await pullFromCloud();
-      // Saada värske ühendatud seis pilve tagasi
+      await pullPromoCodesFromCloud();
       await pushToCloud();
     } catch (err) {
-      console.warn('Supabase initsialiseerimise hoiatus:', err);
+      console.warn('Supabase hoiatus:', err);
       setSyncStatus('Kaitstud • Kohalik varukoopia', false);
     }
   }
 
-  // Ühendab pilve ja kohaliku ajaloo nii, et ükski samm ega päev ei kaoks
   function mergeHistories(localHist = [], cloudHist = []) {
     const mapByDate = new Map();
     [...cloudHist, ...localHist].forEach(item => {
@@ -201,7 +309,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function pullFromCloud() {
     if (!supabaseClient || !state.userId) return;
-
     try {
       const { data, error } = await supabaseClient
         .from('user_states')
@@ -211,13 +318,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (error) throw error;
 
-      if (data && data.state_json) {
+      if (data?.state_json) {
         const cloud = data.state_json;
-
-        // Ühenda ajalugu (mitte ükski kirje ei kustu)
         state.history = mergeHistories(state.history, cloud.history || []);
 
-        // Kui pilves on sama kuupäeva kohta rohkem samme, võta suurem näit
         if (cloud.today && cloud.today.date === state.today.date) {
           if ((cloud.today.steps || 0) > (state.today.steps || 0)) {
             state.today = { ...state.today, ...cloud.today };
@@ -226,15 +330,11 @@ document.addEventListener('DOMContentLoaded', () => {
           state.history = mergeHistories(state.history, [cloud.today]);
         }
 
-        // Taasta profiil ja seaded, kui kohalik on veel algseisus
         if (cloud.profile && state.profile.name === 'Kõndija Pro') {
           state.profile = { ...state.profile, ...cloud.profile };
         }
         if (cloud.settings) {
           state.settings = { ...state.settings, ...cloud.settings };
-        }
-        if (cloud.connectedProviders) {
-          state.connectedProviders = { ...cloud.connectedProviders, ...state.connectedProviders };
         }
 
         saveState(true);
@@ -243,20 +343,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       setSyncStatus('Andmed kaitstud • Pilves ✓', true);
     } catch (err) {
-      console.warn('Pilvest laadimise info:', err.message);
       setSyncStatus('Kaitstud • Kohalik + Pilv', true);
     }
   }
 
   async function pushToCloud() {
     if (!supabaseClient || !state.userId) return;
-
     try {
-      setSyncStatus('Sünkroniseerin pilvega...', true);
       const payload = {
         user_id: state.userId,
         profile_name: state.profile.name,
-        country: state.profile.country,
+        country: state.profile.country || detectCountryName(),
         total_steps:
           state.today.steps +
           state.history.reduce((sum, item) => sum + (item.steps || 0), 0),
@@ -271,7 +368,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (error) throw error;
       setSyncStatus('Andmed kaitstud • Pilves ✓', true);
     } catch (err) {
-      console.warn('Pilve salvestamise hoiatus:', err.message);
       setSyncStatus('Salvestatud seadmesse ✓', false);
     }
   }
@@ -280,11 +376,182 @@ document.addEventListener('DOMContentLoaded', () => {
     if (syncTimeout) clearTimeout(syncTimeout);
     syncTimeout = setTimeout(() => {
       pushToCloud();
-    }, 1200); // Debounce 1.2s, et mitte koormata võrku iga sammu pealt
+    }, 1200);
   }
 
   // ==========================================================================
-  // 4. LIUGMENÜÜ (DRAWER) & ALAMVAADETE NAVIGATSIOON
+  // SOODUSKOODIDE SÜSTEEM (-30%, -50%, -70%, TASUTA) & ADMIN STATISTIKA
+  // ==========================================================================
+
+  async function pullPromoCodesFromCloud() {
+    if (!supabaseClient) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from('promo_codes')
+        .select('code, discount, label');
+      if (!error && Array.isArray(data) && data.length > 0) {
+        state.promoCodes = data;
+        saveState(true);
+      }
+    } catch (e) {
+      // Kasutab kohalikke koode, kui tabelit veel pole
+    }
+  }
+
+  function renderAdminPromoCodes() {
+    const listEl = document.getElementById('adminPromoList');
+    const countEl = document.getElementById('adminTotalCodes');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+    if (countEl) countEl.textContent = state.promoCodes.length;
+
+    state.promoCodes.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'promo-row-item';
+      row.innerHTML = `
+        <div>
+          <span class="promo-code-tag">${item.code}</span>
+          <span class="promo-discount-pill">${item.discount === 100 ? 'TASUTA (100%)' : `-${item.discount}%`}</span>
+        </div>
+        <button class="btn-delete-promo" data-idx="${idx}">Kustuta</button>
+      `;
+      listEl.appendChild(row);
+    });
+
+    listEl.querySelectorAll('.btn-delete-promo').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        const removed = state.promoCodes[idx];
+        state.promoCodes.splice(idx, 1);
+        saveState();
+        renderAdminPromoCodes();
+
+        if (supabaseClient && removed) {
+          try {
+            await supabaseClient.from('promo_codes').delete().eq('code', removed.code);
+          } catch (e) {}
+        }
+      });
+    });
+  }
+
+  document.getElementById('createPromoBtn').addEventListener('click', async () => {
+    const codeInput = document.getElementById('newPromoCodeInput');
+    const discountSelect = document.getElementById('newPromoDiscountSelect');
+    const cleanCode = (codeInput.value || '').trim().toUpperCase();
+    const discount = parseInt(discountSelect.value, 10);
+
+    if (!cleanCode) {
+      alert('Palun sisesta sooduskoodi nimi (nt SUVI50 või VIPTASUTA).');
+      return;
+    }
+
+    const label = discount === 100 ? 'TASUTA (100% PRO)' : `-${discount}% Soodustus`;
+    const newEntry = { code: cleanCode, discount, label };
+
+    state.promoCodes = state.promoCodes.filter(c => c.code !== cleanCode);
+    state.promoCodes.unshift(newEntry);
+    codeInput.value = '';
+    saveState();
+    renderAdminPromoCodes();
+
+    if (supabaseClient) {
+      try {
+        await supabaseClient.from('promo_codes').upsert(newEntry, { onConflict: 'code' });
+      } catch (e) {}
+    }
+  });
+
+  // Kasutaja sooduskoodi lunastamine Seadetes
+  document.getElementById('redeemPromoBtn').addEventListener('click', () => {
+    const input = document.getElementById('userPromoInput');
+    const feedback = document.getElementById('promoFeedbackMsg');
+    const entered = (input.value || '').trim().toUpperCase();
+
+    if (!entered) return;
+
+    const match = state.promoCodes.find(p => p.code.toUpperCase() === entered);
+    if (match) {
+      state.profile.activePromo = match.code;
+      state.profile.plan =
+        match.discount === 100
+          ? 'PRO Täisversioon (TASUTA)'
+          : `PRO (-${match.discount}% Soodustus)`;
+      feedback.style.color = '#10b981';
+      feedback.textContent = `✓ Kood "${match.code}" aktiveeritud: ${state.profile.plan}!`;
+      input.value = '';
+      saveState();
+      renderProfile();
+    } else {
+      feedback.style.color = '#ef4444';
+      feedback.textContent = '✕ Sellist sooduskoodi ei leitud või see on aegunud.';
+    }
+  });
+
+  // Riigipõhise statistika laadimine Admin paneelis
+  async function loadAdminDashboard() {
+    renderAdminPromoCodes();
+    const countryListEl = document.getElementById('adminCountryList');
+    countryListEl.innerHTML = '<div class="subview-lead">Laen pilvest riikide statistikat...</div>';
+
+    let rows = [
+      {
+        country: state.profile.country || detectCountryName(),
+        total_steps:
+          state.today.steps +
+          state.history.reduce((sum, item) => sum + (item.steps || 0), 0)
+      }
+    ];
+
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('user_states')
+          .select('country, total_steps');
+        if (!error && Array.isArray(data) && data.length > 0) {
+          rows = data;
+        }
+      } catch (e) {}
+    }
+
+    const totalUsers = rows.length;
+    const globalSteps = rows.reduce((sum, r) => sum + (Number(r.total_steps) || 0), 0);
+
+    const countryCounts = {};
+    rows.forEach(r => {
+      const c = r.country || '🌍 Muu';
+      countryCounts[c] = (countryCounts[c] || 0) + 1;
+    });
+
+    const sortedCountries = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]);
+
+    document.getElementById('adminTotalUsers').textContent = totalUsers.toLocaleString('et-EE');
+    document.getElementById('adminTotalCountries').textContent = sortedCountries.length;
+    document.getElementById('adminGlobalSteps').textContent = globalSteps.toLocaleString('et-EE');
+
+    countryListEl.innerHTML = '';
+    sortedCountries.forEach(([countryName, count]) => {
+      const pct = Math.round((count / totalUsers) * 100);
+      const item = document.createElement('div');
+      item.className = 'country-row';
+      item.innerHTML = `
+        <div class="country-row-top">
+          <span>${countryName}</span>
+          <span>${count} kasutajat (${pct}%)</span>
+        </div>
+        <div class="country-bar-bg">
+          <div class="country-bar-fill" style="width: ${pct}%"></div>
+        </div>
+      `;
+      countryListEl.appendChild(item);
+    });
+  }
+
+  document.getElementById('refreshAdminStatsBtn').addEventListener('click', loadAdminDashboard);
+
+  // ==========================================================================
+  // LIUGMENÜÜ (DRAWER) & ALAMVAADETE NAVIGATSIOON
   // ==========================================================================
 
   const sidebarDrawer = document.getElementById('sidebarDrawer');
@@ -321,6 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const modal = document.getElementById(targetId);
         if (modal) {
           if (targetId === 'statsModal') renderStatsAndHistory();
+          if (targetId === 'adminModal') loadAdminDashboard();
           modal.classList.add('open');
         }
       } else {
@@ -344,15 +612,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // 5. KASUTAJAPROFIILI MUUTMINE (NIMI & AVATAR)
+  // KASUTAJAPROFIILI MUUTMINE
   // ==========================================================================
 
   const userNameDisplay = document.getElementById('userNameDisplay');
   const userAvatar = document.getElementById('userAvatar');
+  const userPlanBadge = document.getElementById('userPlanBadge');
 
   function renderProfile() {
     if (userNameDisplay) userNameDisplay.textContent = state.profile.name;
     if (userAvatar) userAvatar.src = state.profile.avatar;
+    if (userPlanBadge) userPlanBadge.textContent = state.profile.plan || 'Standard konto';
+    if (googleAuthText) {
+      googleAuthText.textContent = state.profile.email
+        ? `Google: ${state.profile.email}`
+        : 'Ühenda Google\'i kontoga';
+    }
   }
 
   document.getElementById('editNameBtn').addEventListener('click', () => {
@@ -372,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // 6. TÄISEKRAANI KAART (4 KIHTI + LOHISTATAV PIN A + VAHEPUNKTID)
+  // TÄISEKRAANI KAART (4 KIHTI + LOHISTATAV PIN A + VAHEPUNKTID)
   // ==========================================================================
 
   const map = L.map('map', {
@@ -517,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // 7. SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE
+  // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -576,7 +851,7 @@ document.addEventListener('DOMContentLoaded', () => {
           distanceKm: state.today.distanceKm,
           calories: state.today.calories
         });
-        saveState(); // Salvestab nii kohalikku mällu kui ka Supabase pilve
+        saveState();
       }
     }
   });
@@ -592,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // 8. STATISTIKA, TERVISE SÜNKRONISEERIMINE & SEADED
+  // STATISTIKA, TERVISE SÜNKRONISEERIMINE & SEADED
   // ==========================================================================
 
   function renderStatsAndHistory() {
@@ -684,6 +959,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Alglaadimine
   renderProfile();
+  checkAdminAccess();
   switchMapLayer(state.settings.mapLayer);
   updateHudUI();
   initSupabase();
