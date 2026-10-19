@@ -1,16 +1,14 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   STEP 3: SUPABASE SYNC, GOOGLE AUTH, ADMIN PANEL, PROMO CODES & COUNTRY STATS
+   VIOLET PRO THEME + SMART ROUTE GENERATOR + SUPABASE & ADMIN PANEL
    ========================================================================== */
 
-// 1. SUPABASE SEADISTUS
+// 1. SUPABASE & ADMIN SEADISTUS (Valmis sissekirjutatud võtmed ja meilid)
 const SUPABASE_URL = 'https://bktvebmplrabwbgwawao.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO'; // <-- Kleebi siia oma täispikk sb_publishable võti
-
-// 2. ADMINISTRAATORI E-POSTI AADRESSID (Mõlemad Google'i kontod)
+const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO';
 const ADMIN_EMAILS = [
   'info.gowalk.app@gmail.com',
-  'karmo.riiel@gmail.com' // <-- Asenda see oma isikliku Gmaili aadressiga
+  'karmo.riiel@gmail.com'
 ];
 
 let supabaseClient = null;
@@ -159,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminActiveEmailText = document.getElementById('adminActiveEmailText');
 
   function checkAdminAccess() {
+    if (!adminNavBtn) return;
     const email = (state.profile.email || '').toLowerCase().trim();
     const isEmailAdmin = ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(email);
 
@@ -174,70 +173,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Salajane 5-kliki avamine versiooninumbril "GoWalk Pro v2.0" (testimiseks igal ajal)
   let secretTapCount = 0;
   let secretTapTimer = null;
-  document.getElementById('versionSecretTrigger').addEventListener('click', () => {
-    secretTapCount += 1;
-    clearTimeout(secretTapTimer);
-    secretTapTimer = setTimeout(() => {
-      secretTapCount = 0;
-    }, 2000);
+  const versionTrigger = document.getElementById('versionSecretTrigger') || document.querySelector('.version-tag');
+  if (versionTrigger) {
+    versionTrigger.addEventListener('click', () => {
+      secretTapCount += 1;
+      clearTimeout(secretTapTimer);
+      secretTapTimer = setTimeout(() => {
+        secretTapCount = 0;
+      }, 2000);
 
-    if (secretTapCount >= 5) {
-      secretTapCount = 0;
-      state.isAdminUnlocked = !state.isAdminUnlocked;
-      saveState();
-      checkAdminAccess();
-      alert(
-        state.isAdminUnlocked
-          ? '🛡️ Admin Paneel on nüüd menüüs avatud!'
-          : 'Admin Paneel peidetud.'
-      );
-    }
-  });
-
-  // Google sisselogimise nupp
-  googleAuthBtn.addEventListener('click', async () => {
-    if (!supabaseClient) {
-      alert('Supabase ühendus pole veel valmis.');
-      return;
-    }
-
-    if (state.profile.email) {
-      const confirmLogout = confirm(`Oled sisse logitud kui ${state.profile.email}. Kas soovid välja logida?`);
-      if (confirmLogout) {
-        await supabaseClient.auth.signOut();
-        state.profile.email = null;
+      if (secretTapCount >= 5) {
+        secretTapCount = 0;
+        state.isAdminUnlocked = !state.isAdminUnlocked;
         saveState();
-        renderProfile();
         checkAdminAccess();
+        alert(
+          state.isAdminUnlocked
+            ? '🛡️ Admin Paneel on nüüd menüüs avatud!'
+            : 'Admin Paneel peidetud.'
+        );
       }
-      return;
-    }
+    });
+  }
 
-    try {
-      const { error } = await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin + window.location.pathname
+  if (googleAuthBtn) {
+    googleAuthBtn.addEventListener('click', async () => {
+      if (!supabaseClient) {
+        alert('Supabase ühendus pole veel valmis.');
+        return;
+      }
+
+      if (state.profile.email) {
+        const confirmLogout = confirm(`Oled sisse logitud kui ${state.profile.email}. Kas soovid välja logida?`);
+        if (confirmLogout) {
+          await supabaseClient.auth.signOut();
+          state.profile.email = null;
+          saveState();
+          renderProfile();
+          checkAdminAccess();
         }
-      });
-      if (error) throw error;
-    } catch (err) {
-      // Kui Google OAuth pole Supabase'is veel sisse lülitatud, luba e-posti käsitsi sidumine testimiseks
-      const manualEmail = prompt(
-        'Sisesta oma Google e-posti aadress (nt info.gowalk.app@gmail.com):',
-        ''
-      );
-      if (manualEmail && manualEmail.includes('@')) {
-        state.profile.email = manualEmail.trim();
-        saveState();
-        renderProfile();
-        checkAdminAccess();
+        return;
       }
-    }
-  });
+
+      try {
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin + window.location.pathname
+          }
+        });
+        if (error) throw error;
+      } catch (err) {
+        const manualEmail = prompt(
+          'Sisesta oma Google e-posti aadress (nt karmo.riiel@gmail.com või info.gowalk.app@gmail.com):',
+          ''
+        );
+        if (manualEmail && manualEmail.includes('@')) {
+          state.profile.email = manualEmail.trim();
+          saveState();
+          renderProfile();
+          checkAdminAccess();
+        }
+      }
+    });
+  }
 
   // ==========================================================================
   // SUPABASE SESSIOON & PILVESÜNKRONISEERIMINE
@@ -248,12 +249,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function setSyncStatus(text, isOnline = true) {
     if (userSyncBadge) userSyncBadge.textContent = text;
     const dot = document.querySelector('.status-dot');
-    if (dot) dot.style.background = isOnline ? '#10b981' : '#f59e0b';
+    if (dot) dot.style.background = isOnline ? '#8b5cf6' : '#f59e0b';
   }
 
   async function initSupabase() {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('...')) {
-      setSyncStatus('Kohalik mälu (Lisa võti)', false);
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      setSyncStatus('Kohalik mälu', false);
       return;
     }
 
@@ -380,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // SOODUSKOODIDE SÜSTEEM (-30%, -50%, -70%, TASUTA) & ADMIN STATISTIKA
+  // SOODUSKOODID & ADMIN STATISTIKA
   // ==========================================================================
 
   async function pullPromoCodesFromCloud() {
@@ -393,9 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.promoCodes = data;
         saveState(true);
       }
-    } catch (e) {
-      // Kasutab kohalikke koode, kui tabelit veel pole
-    }
+    } catch (e) {}
   }
 
   function renderAdminPromoCodes() {
@@ -436,63 +435,68 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.getElementById('createPromoBtn').addEventListener('click', async () => {
-    const codeInput = document.getElementById('newPromoCodeInput');
-    const discountSelect = document.getElementById('newPromoDiscountSelect');
-    const cleanCode = (codeInput.value || '').trim().toUpperCase();
-    const discount = parseInt(discountSelect.value, 10);
+  const createPromoBtn = document.getElementById('createPromoBtn');
+  if (createPromoBtn) {
+    createPromoBtn.addEventListener('click', async () => {
+      const codeInput = document.getElementById('newPromoCodeInput');
+      const discountSelect = document.getElementById('newPromoDiscountSelect');
+      const cleanCode = (codeInput.value || '').trim().toUpperCase();
+      const discount = parseInt(discountSelect.value, 10);
 
-    if (!cleanCode) {
-      alert('Palun sisesta sooduskoodi nimi (nt SUVI50 või VIPTASUTA).');
-      return;
-    }
+      if (!cleanCode) {
+        alert('Palun sisesta sooduskoodi nimi (nt SUVI50 või VIPTASUTA).');
+        return;
+      }
 
-    const label = discount === 100 ? 'TASUTA (100% PRO)' : `-${discount}% Soodustus`;
-    const newEntry = { code: cleanCode, discount, label };
+      const label = discount === 100 ? 'TASUTA (100% PRO)' : `-${discount}% Soodustus`;
+      const newEntry = { code: cleanCode, discount, label };
 
-    state.promoCodes = state.promoCodes.filter(c => c.code !== cleanCode);
-    state.promoCodes.unshift(newEntry);
-    codeInput.value = '';
-    saveState();
-    renderAdminPromoCodes();
-
-    if (supabaseClient) {
-      try {
-        await supabaseClient.from('promo_codes').upsert(newEntry, { onConflict: 'code' });
-      } catch (e) {}
-    }
-  });
-
-  // Kasutaja sooduskoodi lunastamine Seadetes
-  document.getElementById('redeemPromoBtn').addEventListener('click', () => {
-    const input = document.getElementById('userPromoInput');
-    const feedback = document.getElementById('promoFeedbackMsg');
-    const entered = (input.value || '').trim().toUpperCase();
-
-    if (!entered) return;
-
-    const match = state.promoCodes.find(p => p.code.toUpperCase() === entered);
-    if (match) {
-      state.profile.activePromo = match.code;
-      state.profile.plan =
-        match.discount === 100
-          ? 'PRO Täisversioon (TASUTA)'
-          : `PRO (-${match.discount}% Soodustus)`;
-      feedback.style.color = '#10b981';
-      feedback.textContent = `✓ Kood "${match.code}" aktiveeritud: ${state.profile.plan}!`;
-      input.value = '';
+      state.promoCodes = state.promoCodes.filter(c => c.code !== cleanCode);
+      state.promoCodes.unshift(newEntry);
+      codeInput.value = '';
       saveState();
-      renderProfile();
-    } else {
-      feedback.style.color = '#ef4444';
-      feedback.textContent = '✕ Sellist sooduskoodi ei leitud või see on aegunud.';
-    }
-  });
+      renderAdminPromoCodes();
 
-  // Riigipõhise statistika laadimine Admin paneelis
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('promo_codes').upsert(newEntry, { onConflict: 'code' });
+        } catch (e) {}
+      }
+    });
+  }
+
+  const redeemPromoBtn = document.getElementById('redeemPromoBtn');
+  if (redeemPromoBtn) {
+    redeemPromoBtn.addEventListener('click', () => {
+      const input = document.getElementById('userPromoInput');
+      const feedback = document.getElementById('promoFeedbackMsg');
+      const entered = (input.value || '').trim().toUpperCase();
+
+      if (!entered) return;
+
+      const match = state.promoCodes.find(p => p.code.toUpperCase() === entered);
+      if (match) {
+        state.profile.activePromo = match.code;
+        state.profile.plan =
+          match.discount === 100
+            ? 'PRO Täisversioon (TASUTA)'
+            : `PRO (-${match.discount}% Soodustus)`;
+        feedback.style.color = '#c084fc';
+        feedback.textContent = `✓ Kood "${match.code}" aktiveeritud: ${state.profile.plan}!`;
+        input.value = '';
+        saveState();
+        renderProfile();
+      } else {
+        feedback.style.color = '#ef4444';
+        feedback.textContent = '✕ Sellist sooduskoodi ei leitud või see on aegunud.';
+      }
+    });
+  }
+
   async function loadAdminDashboard() {
     renderAdminPromoCodes();
     const countryListEl = document.getElementById('adminCountryList');
+    if (!countryListEl) return;
     countryListEl.innerHTML = '<div class="subview-lead">Laen pilvest riikide statistikat...</div>';
 
     let rows = [
@@ -548,7 +552,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.getElementById('refreshAdminStatsBtn').addEventListener('click', loadAdminDashboard);
+  const refreshAdminBtn = document.getElementById('refreshAdminStatsBtn');
+  if (refreshAdminBtn) {
+    refreshAdminBtn.addEventListener('click', loadAdminDashboard);
+  }
 
   // ==========================================================================
   // LIUGMENÜÜ (DRAWER) & ALAMVAADETE NAVIGATSIOON
@@ -647,7 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // TÄISEKRAANI KAART (4 KIHTI + LOHISTATAV PIN A + VAHEPUNKTID)
+  // TÄISEKRAANI KAART + AUTOMAATSE TRAJEKTOORI GENERAATOR
   // ==========================================================================
 
   const map = L.map('map', {
@@ -699,49 +706,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let waypoints = [];
   let markers = [];
+  // Lillakas-violetne marsruudijoon
   let routeLine = L.polyline([], {
-    color: '#10b981',
+    color: '#8b5cf6',
     weight: 5,
-    opacity: 0.9
+    opacity: 0.92
   }).addTo(map);
 
   function createPinIcon(label, isStart = false) {
-    const bg = isStart ? '#10b981' : '#06b6d4';
+    const bg = isStart ? '#8b5cf6' : '#c084fc';
     return L.divIcon({
       className: 'custom-map-pin',
       html: `<div style="
         width:28px;height:28px;border-radius:50%;
-        background:${bg};color:#03150e;font-family:'Plus Jakarta Sans',sans-serif;
+        background:${bg};color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;
         font-weight:800;font-size:12px;display:flex;align-items:center;
-        justify-content:center;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.45);
+        justify-content:center;border:2px solid #fff;box-shadow:0 4px 14px rgba(139,92,246,0.65);
       ">${label}</div>`,
       iconSize: [28, 28],
       iconAnchor: [14, 14]
     });
   }
 
-  function recalculateRouteMetrics() {
-    let totalMeters = 0;
-    for (let i = 1; i < waypoints.length; i++) {
-      totalMeters += map.distance(waypoints[i - 1], waypoints[i]);
-    }
+  function applyRouteDistanceMeters(totalMeters) {
     const routeKm = totalMeters / 1000;
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const routeSteps = Math.round(totalMeters / strideMeters);
 
-    if (waypoints.length > 1) {
-      state.today.distanceKm = +routeKm.toFixed(2);
-      state.today.steps = Math.max(state.today.steps, routeSteps);
-      state.today.calories = Math.round(state.today.steps * 0.04);
-      saveState();
-      updateHudUI();
+    state.today.distanceKm = +routeKm.toFixed(2);
+    state.today.steps = routeSteps;
+    state.today.calories = Math.round(routeSteps * 0.04);
+    saveState();
+    updateHudUI();
+  }
+
+  function recalculateRouteMetrics() {
+    let totalMeters = 0;
+    const latlngs = routeLine.getLatLngs();
+    for (let i = 1; i < latlngs.length; i++) {
+      totalMeters += map.distance(latlngs[i - 1], latlngs[i]);
+    }
+    if (latlngs.length > 1) {
+      applyRouteDistanceMeters(totalMeters);
     }
   }
 
-  function rebuildWaypoints() {
+  function rebuildWaypoints(customGeometry = null) {
     markers.forEach(m => map.removeLayer(m));
     markers = [];
-    routeLine.setLatLngs(waypoints);
+    routeLine.setLatLngs(customGeometry || waypoints);
 
     waypoints.forEach((latlng, idx) => {
       const label = idx === 0 ? 'A' : idx;
@@ -776,20 +789,172 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('clearRouteBtn').addEventListener('click', () => {
     waypoints = [];
-    rebuildWaypoints();
+    routeLine.setLatLngs([]);
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
   });
 
   document.getElementById('locateMeBtn').addEventListener('click', () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(pos => {
       const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      map.setView(latlng, 16);
+      map.setView(latlng, 15);
       if (waypoints.length === 0) {
         waypoints.push(latlng);
+        rebuildWaypoints();
+      } else {
+        waypoints[0] = latlng;
         rebuildWaypoints();
       }
     });
   });
+
+  // ==========================================================================
+  // NUTIKAS TRAJEKTOORI GENERAATOR (RINGMARSruut SAMMUDE EESMÄRGI JÄRGI)
+  // ==========================================================================
+
+  function setupRouteGeneratorUI() {
+    const viewport = document.querySelector('.app-viewport');
+    const toolsBar = document.querySelector('.map-floating-tools');
+    if (!viewport || !toolsBar) return;
+
+    // 1. Lisa võlukepi nupp kaardi parempoolsele tööriistaribale
+    const magicFab = document.createElement('button');
+    magicFab.className = 'tool-fab magic-fab';
+    magicFab.title = 'Genereeri sammudeks trajektoor';
+    magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
+    toolsBar.prepend(magicFab);
+
+    // 2. Ehita hüpikkaart sammude valimiseks
+    const popover = document.createElement('div');
+    popover.id = 'routeGenPopover';
+    popover.className = 'route-gen-popover';
+    popover.innerHTML = `
+      <div class="route-gen-header">
+        <div class="route-gen-title">
+          <span class="spark">✨</span>
+          <span>Automaatne Trajektoori Generaator</span>
+        </div>
+        <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">✕</button>
+      </div>
+      <p class="route-gen-sub">
+        Vali soovitud sammude arv ja GoWalk joonistab sulle alguspunktist (Pin A) täpse ringtrajektoori:
+      </p>
+      <div class="route-preset-pills">
+        <button class="preset-pill" data-steps="3000">3 000</button>
+        <button class="preset-pill" data-steps="5000">5 000</button>
+        <button class="preset-pill active" data-steps="8000">8 000</button>
+        <button class="preset-pill" data-steps="10000">10 000</button>
+      </div>
+      <div class="route-custom-row">
+        <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${state.settings.stepGoal || 8000}" step="500" min="500" placeholder="Sammude arv..." />
+        <button id="generateSmartRouteBtn" class="btn-generate-go">Genereeri rada</button>
+      </div>
+    `;
+    viewport.appendChild(popover);
+
+    if (window.lucide) lucide.createIcons();
+
+    const togglePopover = () => popover.classList.toggle('open');
+    magicFab.addEventListener('click', togglePopover);
+    document.getElementById('closeRouteGenBtn').addEventListener('click', () => {
+      popover.classList.remove('open');
+    });
+
+    const stepsInput = document.getElementById('targetRouteStepsInput');
+    popover.querySelectorAll('.preset-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        popover.querySelectorAll('.preset-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        const val = parseInt(pill.getAttribute('data-steps'), 10);
+        stepsInput.value = val;
+        generateLoopRouteForSteps(val);
+        popover.classList.remove('open');
+      });
+    });
+
+    document.getElementById('generateSmartRouteBtn').addEventListener('click', () => {
+      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || state.settings.stepGoal);
+      generateLoopRouteForSteps(targetSteps);
+      popover.classList.remove('open');
+    });
+  }
+
+  // Arvutab geomeetrilise abipunkti kauguse (m) ja suuna (rad) järgi
+  function offsetCoordinate(originLatLng, distanceMeters, bearingRad) {
+    const R = 6378137;
+    const lat1 = (originLatLng.lat * Math.PI) / 180;
+    const lon1 = (originLatLng.lng * Math.PI) / 180;
+    const dByR = distanceMeters / R;
+
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(dByR) +
+        Math.cos(lat1) * Math.sin(dByR) * Math.cos(bearingRad)
+    );
+    const lon2 =
+      lon1 +
+      Math.atan2(
+        Math.sin(bearingRad) * Math.sin(dByR) * Math.cos(lat1),
+        Math.cos(dByR) - Math.sin(lat1) * Math.sin(lat2)
+      );
+
+    return L.latLng((lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI);
+  }
+
+  async function generateLoopRouteForSteps(targetSteps) {
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    const targetMeters = targetSteps * strideMeters;
+
+    // Uuenda ka kasutaja päevast eesmärki, kui ta valis suurema sihi
+    state.settings.stepGoal = targetSteps;
+    const settingStepGoalEl = document.getElementById('settingStepGoal');
+    if (settingStepGoalEl) settingStepGoalEl.value = targetSteps;
+
+    // Alguspunkt: kas olemasolev Pin A või kaardi keskpunkt
+    const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
+
+    // Tee käänukuse koefitsient (tänavavõrgus on ring ~1.28x pikem kui sirgjooned)
+    const effectivePerimeter = targetMeters / 1.28;
+    const radiusMeters = effectivePerimeter / (2 * Math.PI);
+
+    // Vali iga kord veidi erinev suund, et iga genereerimine pakuks uut rada
+    const baseAngle = Math.random() * 2 * Math.PI;
+    const p1 = offsetCoordinate(startPoint, radiusMeters * 1.15, baseAngle);
+    const p2 = offsetCoordinate(startPoint, radiusMeters * 1.35, baseAngle + Math.PI / 2.2);
+    const p3 = offsetCoordinate(startPoint, radiusMeters * 1.15, baseAngle + Math.PI / 1.1);
+
+    waypoints = [startPoint, p1, p2, p3];
+
+    try {
+      // Küsi päris tänavate marsruut OSRM ruutimismootorilt
+      const coordsQuery = [startPoint, p1, p2, p3, startPoint]
+        .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
+        .join(';');
+
+      const res = await fetch(
+        `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
+      );
+      const data = await res.json();
+
+      if (data && data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+
+        rebuildWaypoints(latlngs);
+        applyRouteDistanceMeters(targetMeters);
+        map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+        return;
+      }
+    } catch (err) {
+      console.warn('OSRM marsruudi varurežiim:', err);
+    }
+
+    // Varurežiim, kui kasutaja on offline
+    waypoints.push(startPoint);
+    rebuildWaypoints();
+    applyRouteDistanceMeters(targetMeters);
+    map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+  }
 
   // ==========================================================================
   // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE
@@ -856,13 +1021,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Alumine "+" nupp võimaldab nüüd nii samme lisada kui ka kohe trajektoori genereerida
   document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
-    const input = prompt('Lisa sammud käsitsi:', '1000');
-    const added = parseInt(input, 10);
-    if (!isNaN(added) && added > 0) {
-      state.today.steps += added;
-      saveState();
-      updateHudUI();
+    const popover = document.getElementById('routeGenPopover');
+    if (popover) {
+      popover.classList.toggle('open');
     }
   });
 
@@ -958,6 +1121,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Alglaadimine
+  setupRouteGeneratorUI();
   renderProfile();
   checkAdminAccess();
   switchMapLayer(state.settings.mapLayer);
