@@ -256,9 +256,9 @@ function initMap() {
 
   map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
 
-  // Tume neoon-stiiliga sobiv aluskaart
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap & CartoDB',
+  // Kasutame tumedat OpenFreeMapi kihti, mis ei vaja kunagi API võtit
+  L.tileLayer('https://tiles.openfreemap.org/styles/liberty/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(map);
 
@@ -276,6 +276,7 @@ function initMap() {
     placeUserMarker();
   }
 }
+
 
 function placeUserMarker() {
   if (!map) return;
