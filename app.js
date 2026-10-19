@@ -257,9 +257,9 @@ function initMap() {
   // Initsialiseerime kaardi
   map = L.map('map').setView([userCoords.lat, userCoords.lng], 14);
 
-  // Kasutame OpenFreeMapi tumedat stiili (ei vaja API võtit, töötab alati)
-  L.tileLayer('https://tiles.openfreemap.org/styles/liberty/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+  // Kasutame standardset OpenStreetMapi kihti, mis töötab alati ja igal pool
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
   }).addTo(map);
 
@@ -278,7 +278,6 @@ function initMap() {
     placeUserMarker();
   }
 }
-
 
 
 
