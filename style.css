@@ -1,0 +1,563 @@
+:root {
+  --bg-main: #0b0514;
+  --bg-card: #160c26;
+  --bg-input: #211338;
+  --neon-pink: #ff1e8e;
+  --neon-purple: #a855f7;
+  --text-main: #ffffff;
+  --text-muted: #a395b8;
+  --border-color: rgba(255, 30, 142, 0.22);
+  --danger: #ff4d6d;
+  --success: #10b981;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-main);
+  background-image: radial-gradient(circle at 50% 0%, #240f42 0%, #0b0514 70%);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Vaadete haldus */
+.view {
+  display: none;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+  min-height: 100vh;
+}
+
+.view.active {
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Bränd ja Logo */
+.brand-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.logo-icon {
+  display: inline-flex;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 16px rgba(255, 30, 142, 0.45));
+}
+
+.brand-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.brand-title span,
+.brand-title-sm span {
+  color: var(--neon-pink);
+  text-shadow: 0 0 12px rgba(255, 30, 142, 0.5);
+}
+
+.brand-subtitle {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin-top: 4px;
+}
+
+/* Sisselogimise kaart */
+.auth-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 28px 20px;
+  margin-top: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.auth-tabs {
+  display: flex;
+  background: var(--bg-input);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.auth-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 10px;
+  font-weight: 600;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.auth-tab.active {
+  background: var(--neon-pink);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(255, 30, 142, 0.4);
+}
+
+/* Vormid ja sisendid */
+.input-group {
+  margin-bottom: 16px;
+}
+
+label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: 600;
+  outline: none;
+  transition: border 0.2s;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--neon-pink);
+}
+
+/* Nupud */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 18px;
+  border-radius: 14px;
+  font-size: 0.96rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.2s;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-full {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
+  color: #fff;
+  box-shadow: 0 4px 18px rgba(255, 30, 142, 0.4);
+}
+
+.btn-secondary {
+  background: #271545;
+  color: #fff;
+  border: 1px solid var(--neon-pink);
+}
+
+.btn-outline {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+.btn-sm {
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--neon-pink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.divider {
+  text-align: center;
+  margin: 16px 0 8px;
+  position: relative;
+}
+
+.divider span {
+  background: var(--bg-card);
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+/* Päis ja navigatsioon */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 14px;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mini-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  box-shadow: 0 0 12px rgba(255, 30, 142, 0.5);
+}
+
+.brand-title-sm {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.streak-badge {
+  background: rgba(255, 30, 142, 0.16);
+  border: 1px solid var(--neon-pink);
+  padding: 6px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.icon-btn {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.main-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nav-btn {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  padding: 11px;
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nav-btn.active {
+  background: rgba(255, 30, 142, 0.18);
+  border-color: var(--neon-pink);
+  color: #fff;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Kaardid (Cards) */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+
+.card-row {
+  display: flex;
+  gap: 12px;
+}
+
+.input-col {
+  flex: 1;
+}
+
+.route-preview-info {
+  margin: 12px 0;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.route-preview-info strong {
+  color: var(--neon-pink);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-input);
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--neon-pink);
+}
+
+.checkbox-label {
+  color: #fff;
+  font-size: 0.88rem;
+}
+
+/* Sammulugeja vaade */
+.tracker-card {
+  text-align: center;
+}
+
+.progress-ring-container {
+  margin: 10px auto 18px;
+  width: 165px;
+  height: 165px;
+  border-radius: 50%;
+  border: 6px solid rgba(255, 30, 142, 0.25);
+  border-top-color: var(--neon-pink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 25px rgba(255, 30, 142, 0.25);
+}
+
+.big-number {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.steps-label {
+  font-size: 0.78rem;
+  color: var(--neon-pink);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.stats-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.stat-box {
+  background: var(--bg-input);
+  padding: 10px 6px;
+  border-radius: 12px;
+}
+
+.stat-val {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.stat-lbl {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+/* Kaart */
+.map-card {
+  padding: 6px;
+  overflow: hidden;
+}
+
+#map {
+  width: 100%;
+  height: 290px;
+  border-radius: 15px;
+  background: #10081c;
+}
+
+/* Statistika vaade */
+.stats-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-highlight {
+  text-align: center;
+  padding: 20px 12px;
+}
+
+.stat-highlight .stat-val {
+  font-size: 1.7rem;
+  color: var(--neon-pink);
+}
+
+.section-title {
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-input);
+  padding: 12px 14px;
+  border-radius: 12px;
+  border-left: 4px solid var(--neon-pink);
+}
+
+.history-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Teated ja vead */
+.auth-message {
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.error-banner {
+  background: rgba(255, 77, 109, 0.15);
+  border: 1px solid var(--danger);
+  color: #ffb3c1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  margin-bottom: 10px;
+}
+
+/* Modaalaknad */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 2, 10, 0.82);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 2000;
+}
+
+.modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--neon-pink);
+  border-radius: 22px;
+  padding: 22px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.modal-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.calc-preview {
+  text-align: center;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.calc-preview strong {
+  color: var(--neon-pink);
+  font-size: 1.2rem;
+}
+
+.pwa-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 0.86rem;
+}
+
+.pwa-step {
+  background: var(--bg-input);
+  padding: 12px;
+  border-radius: 12px;
+}
