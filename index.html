@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>GoWalk — Pro Step & Route Tracker</title>
 
-  <!-- Google Fonts: Plus Jakarta Sans & Inter (Terav Pro Tüpograafia) -->
+  <!-- Google Fonts: Plus Jakarta Sans & Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -31,7 +31,7 @@
   <aside id="sidebarDrawer" class="sidebar-drawer" aria-label="Peamenüü">
     <!-- Profiili päis -->
     <div class="drawer-profile">
-      <div class="profile-avatar-wrap" id="editAvatarBtn" title="Muuda profiili">
+      <div class="profile-avatar-wrap" id="editAvatarBtn" title="Muuda profiilipilti">
         <img id="userAvatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=GoWalkPro" alt="Profiilipilt" class="profile-avatar" />
         <span class="avatar-edit-badge"><i data-lucide="pencil"></i></span>
       </div>
@@ -44,9 +44,18 @@
           <span class="status-dot online"></span>
           <span id="userSyncBadge">Andmed kaitstud • Pilves</span>
         </div>
+        <span id="userPlanBadge" class="plan-badge">Standard konto</span>
       </div>
       <button id="closeDrawerBtn" class="icon-btn close-drawer-btn" aria-label="Sulge menüü">
         <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <!-- Google Sisselogimise riba -->
+    <div class="drawer-auth-bar">
+      <button id="googleAuthBtn" class="btn-google-auth">
+        <i data-lucide="log-in"></i>
+        <span id="googleAuthText">Ühenda Google'i kontoga</span>
       </button>
     </div>
 
@@ -82,8 +91,8 @@
       <button class="nav-item" data-target="settingsModal">
         <span class="nav-icon"><i data-lucide="settings"></i></span>
         <div class="nav-text">
-          <span class="nav-title">Seaded</span>
-          <span class="nav-sub">Sammupikkus, eesmärk, eksport</span>
+          <span class="nav-title">Seaded & Sooduskood</span>
+          <span class="nav-sub">Sammupikkus, eesmärk, koodid, eksport</span>
         </div>
         <i data-lucide="chevron-right" class="nav-arrow"></i>
       </button>
@@ -105,6 +114,16 @@
         </div>
         <i data-lucide="chevron-right" class="nav-arrow"></i>
       </button>
+
+      <!-- PEIDETUD ADMIN PANEELI NUPP (Nähtav ainult administraatorile) -->
+      <button id="adminNavBtn" class="nav-item admin-nav-item" data-target="adminModal" style="display: none;">
+        <span class="nav-icon"><i data-lucide="shield-alert"></i></span>
+        <div class="nav-text">
+          <span class="nav-title">Admin Paneel</span>
+          <span class="nav-sub">Sooduskoodid & Riigistatistika</span>
+        </div>
+        <i data-lucide="chevron-right" class="nav-arrow"></i>
+      </button>
     </nav>
 
     <!-- Menüü jalus -->
@@ -113,7 +132,7 @@
         <i data-lucide="shield-check"></i>
         <span>100% Andmete säilivus (Pilv + Kohalik)</span>
       </div>
-      <span class="version-tag">GoWalk Pro v2.0</span>
+      <span id="versionSecretTrigger" class="version-tag" title="Versioon">GoWalk Pro v2.0</span>
     </div>
   </aside>
 
@@ -228,7 +247,7 @@
 
   </main>
 
-  <!-- ================= ALAMVAATED / MODAALID (AVANEVAD MENÜÜST) ================= -->
+  <!-- ================= ALAMVAATED / MODAALID ================= -->
 
   <!-- 1. STATISTIKA & AJALUGU -->
   <div id="statsModal" class="subview-modal" aria-hidden="true">
@@ -265,9 +284,7 @@
       </div>
 
       <h3 class="section-subtitle">Salvestatud jalutuskäikude ajalugu</h3>
-      <div id="historyList" class="history-list">
-        <!-- Täidetakse automaatselt app.js poolt -->
-      </div>
+      <div id="historyList" class="history-list"></div>
     </div>
   </div>
 
@@ -285,7 +302,6 @@
         Ühenda oma nutikell, aktiivsusmonitor või telefoni terviseäpp. GoWalk impordib sammud automaatselt.
       </p>
 
-      <!-- Universaalsed sillad -->
       <div class="sync-category-label">Universaalsed Tervisekeskused (Soovitatav)</div>
       <div class="sync-provider-list">
         <div class="sync-card" data-provider="health_connect">
@@ -311,7 +327,6 @@
         </div>
       </div>
 
-      <!-- Otseühendused seadmetega -->
       <div class="sync-category-label">Tootjate ökosüsteemid & Kellad</div>
       <div class="sync-provider-list">
         <div class="sync-card" data-provider="samsung">
@@ -327,7 +342,7 @@
 
         <div class="sync-card" data-provider="fitbit">
           <div class="sync-card-left">
-            <div class="provider-icon fitbit"><i data-lucide=" compass"></i></div>
+            <div class="provider-icon fitbit"><i data-lucide="compass"></i></div>
             <div>
               <h4>Fitbit</h4>
               <p>Fitbit Sense, Versa, Charge ja Inspire seeria</p>
@@ -372,16 +387,33 @@
     </div>
   </div>
 
-  <!-- 3. SEADED -->
+  <!-- 3. SEADED & SOODUSKOOD -->
   <div id="settingsModal" class="subview-modal" aria-hidden="true">
     <div class="subview-header">
       <div class="subview-title-group">
         <i data-lucide="settings" class="subview-header-icon"></i>
-        <h2>Seaded</h2>
+        <h2>Seaded & Sooduskood</h2>
       </div>
       <button class="icon-btn close-subview"><i data-lucide="x"></i></button>
     </div>
     <div class="subview-body">
+
+      <!-- Sooduskoodi lunastamise plokk -->
+      <div class="promo-redeem-box">
+        <div class="promo-header-line">
+          <i data-lucide="ticket"></i>
+          <div>
+            <h4>Sul on sooduskood või VIP pääse?</h4>
+            <p>Sisesta kood (-30%, -50%, -70% või TASUTA Pro)</p>
+          </div>
+        </div>
+        <div class="promo-input-row">
+          <input type="text" id="userPromoInput" class="pro-input promo-code-field" placeholder="NT: GOWALK50" />
+          <button id="redeemPromoBtn" class="btn-redeem">Rakenda</button>
+        </div>
+        <div id="promoFeedbackMsg" class="promo-feedback"></div>
+      </div>
+
       <div class="settings-group">
         <label class="setting-item">
           <div class="setting-info">
@@ -478,6 +510,81 @@
       <div class="help-card">
         <h4><i data-lucide="refresh-cw"></i> Kuidas töötab sünkroniseerimine?</h4>
         <p>Ava menüüst "Terviseandmete sünkroniseerimine" ja ühenda oma seade (Samsung, Apple, Fitbit, Xiaomi, Garmin, Huawei). Kõik päeva sammud liidetakse automaatselt.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. TURVATUD ADMIN PANEEL (SOODUSKOODID & RIIGISTATISTIKA) -->
+  <div id="adminModal" class="subview-modal" aria-hidden="true">
+    <div class="subview-header admin-header">
+      <div class="subview-title-group">
+        <i data-lucide="shield-alert" class="subview-header-icon"></i>
+        <h2>GoWalk Admin Paneel</h2>
+      </div>
+      <button class="icon-btn close-subview"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="subview-body">
+      <div class="admin-access-banner">
+        <i data-lucide="key-round"></i>
+        <div>
+          <strong>Administraatori ligipääs aktiivne</strong>
+          <div id="adminActiveEmailText" class="admin-sub-email">Õigused: info.gowalk.app@gmail.com + isiklik konto</div>
+        </div>
+      </div>
+
+      <!-- Üldnumbrid -->
+      <div class="stats-grid-cards">
+        <div class="stat-card">
+          <span class="stat-label">Kasutajaid pilves</span>
+          <strong id="adminTotalUsers" class="stat-value">1</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Riike kokku</span>
+          <strong id="adminTotalCountries" class="stat-value">1</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Aktiivseid koode</span>
+          <strong id="adminTotalCodes" class="stat-value">4</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Kõigi kasutajate sammud</span>
+          <strong id="adminGlobalSteps" class="stat-value">0</strong>
+        </div>
+      </div>
+
+      <!-- SOODUSKOODIDE HALDUR -->
+      <div class="admin-section-box">
+        <div class="admin-box-header">
+          <h3><i data-lucide="percent"></i> Sooduskoodide Haldur</h3>
+          <span class="badge-mini">Loo & Halda</span>
+        </div>
+
+        <div class="promo-creator-form">
+          <input type="text" id="newPromoCodeInput" class="pro-input promo-code-field" placeholder="Kood (nt SUVI50)" />
+          <select id="newPromoDiscountSelect" class="pro-select promo-tier-select">
+            <option value="30">-30% Soodustus</option>
+            <option value="50">-50% Soodustus</option>
+            <option value="70">-70% Soodustus</option>
+            <option value="100">TASUTA (100% PRO)</option>
+          </select>
+          <button id="createPromoBtn" class="btn-create-promo">
+            <i data-lucide="plus"></i> Lisa
+          </button>
+        </div>
+
+        <div id="adminPromoList" class="admin-promo-list"></div>
+      </div>
+
+      <!-- RIIGIPÕHINE STATISTIKA -->
+      <div class="admin-section-box">
+        <div class="admin-box-header">
+          <h3><i data-lucide="globe-2"></i> Kasutajate statistika riigiti</h3>
+          <button id="refreshAdminStatsBtn" class="btn-mini-refresh">
+            <i data-lucide="refresh-cw"></i> Värskenda
+          </button>
+        </div>
+        <div id="adminCountryList" class="country-stats-list"></div>
       </div>
     </div>
   </div>
