@@ -274,7 +274,7 @@ html, body {
 }
 
 /* ==========================================================================
-   AUTOMAATSE TRAJEKTOORI GENERAATORI HÜPIKKAART & HÕLJUV SHUFFLE NUPP
+   AUTOMAATSE TRAJEKTOORI GENERAATORI HÜPIKKAART, VALGUSTATUD VALIK & SHUFFLE
    ========================================================================== */
 
 .route-gen-popover {
@@ -285,14 +285,14 @@ html, body {
   z-index: 25;
   padding: 16px;
   border-radius: var(--radius-xl);
-  background: rgba(15, 11, 29, 0.95);
+  background: rgba(15, 11, 29, 0.96);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--border-highlight);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.75), 0 0 28px var(--accent-glow);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.78), 0 0 28px var(--accent-glow);
   display: none;
   flex-direction: column;
-  gap: 12px;
+  gap: 11px;
   animation: popIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -335,6 +335,82 @@ html, body {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+/* Turvalise / valgustatud raja lüliti */
+.safe-route-toggle {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.safe-route-toggle.active {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(251, 191, 36, 0.65);
+  color: #fef3c7;
+  box-shadow: 0 4px 18px rgba(245, 158, 11, 0.2);
+}
+
+.safe-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.safe-toggle-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.safe-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.safe-toggle-title {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.safe-toggle-sub {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  line-height: 1.25;
+}
+
+.safe-route-toggle.active .safe-toggle-sub {
+  color: #fde68a;
+}
+
+.safe-toggle-pill {
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.safe-route-toggle.active .safe-toggle-pill {
+  background: #f59e0b;
+  color: #080711;
 }
 
 .route-preset-pills {
@@ -1326,7 +1402,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: rgba(8, 7, 17, 0.65);
   border: 1px solid var(--border-subtle);
 }
