@@ -1,0 +1,153 @@
+/* ==========================================================================
+   GOWALK PRO — LAYOUT & MAP VIEWPORT
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+}
+
+.app-viewport {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.fullscreen-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background: #080711;
+}
+
+.map-tiles-dark {
+  filter: invert(100%) hue-rotate(210deg) brightness(90%) contrast(94%) saturate(95%);
+}
+
+.leaflet-control-zoom {
+  display: none !important;
+}
+
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: rgba(8, 7, 17, 0.55) !important;
+  color: var(--text-muted) !important;
+  backdrop-filter: blur(4px);
+}
+.leaflet-control-attribution a {
+  color: var(--text-secondary) !important;
+}
+
+.floating-topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: max(12px, env(safe-area-inset-top)) 16px 8px;
+  pointer-events: none;
+}
+.floating-topbar > * { pointer-events: auto; }
+
+.glass-icon-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.brand-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.brand-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-primary);
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 16px;
+}
+.pro-tag {
+  font-family: var(--font-display);
+  font-size: 10px; font-weight: 800;
+  padding: 2px 6px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: #ffffff;
+}
+
+.map-layer-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+.layer-chip {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: var(--radius-pill);
+  background: var(--bg-glass); backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle); color: var(--text-secondary);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.layer-chip.active {
+  background: rgba(139, 92, 246, 0.28);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.map-floating-tools {
+  position: absolute; right: 16px; top: 128px; z-index: 10;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tool-fab {
+  width: 42px; height: 42px; border-radius: 14px;
+  background: var(--bg-surface); backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle); color: var(--text-primary);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.tool-fab.magic-fab {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  border-color: var(--accent-secondary);
+  color: #ffffff;
+}
