@@ -1,6 +1,7 @@
 /* ==========================================================================
-   GOWALK PRO — VARIABLES & DESIGN SYSTEM
+   GOWALK PRO — 1. VARIABLES, RESET & SHARED ICON HELPERS
    ========================================================================== */
+
 :root {
   --bg-deep: #080711;
   --bg-surface: rgba(17, 14, 32, 0.88);
@@ -27,4 +28,71 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-pill: 9999px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+}
+
+.steps-big-number,
+.ring-percent,
+.mini-metric span,
+.stat-value,
+.dial-big-input {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Peida eemaldatud kellaühenduste vaade ja alumise HUD-i pluss-nupp */
+#syncModal,
+.nav-item[data-target="syncModal"],
+#quickAddStepsBtn {
+  display: none !important;
+}
+
+/* Ühtsed Lucide'i SVG jooneikoonid nuppude sees */
+.gw-inline-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex-shrink: 0;
+}
+
+.gw-inline-icon.sm {
+  width: 14px;
+  height: 14px;
+}
+
+.gw-inline-icon.lg {
+  width: 18px;
+  height: 18px;
+}
+
+.gw-spin {
+  animation: gwSpin 0.9s linear infinite;
+}
+
+@keyframes gwSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
