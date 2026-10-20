@@ -3,7 +3,7 @@
    VIOLET PRO THEME + SMART ROUTE GENERATOR + SUPABASE & ADMIN PANEL
    ========================================================================== */
 
-// 1. SUPABASE & ADMIN SEADISTUS (Valmis sissekirjutatud võtmed ja meilid)
+// 1. SUPABASE & ADMIN SEADISTUS
 const SUPABASE_URL = 'https://bktvebmplrabwbgwawao.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_4OjglZgVrIPWOAOfkrlcZQ_7uZOPEIO';
 const ADMIN_EMAILS = [
@@ -706,7 +706,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let waypoints = [];
   let markers = [];
-  // Lillakas-violetne marsruudijoon
   let routeLine = L.polyline([], {
     color: '#8b5cf6',
     weight: 5,
@@ -810,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR (RINGMARSruut SAMMUDE EESMÄRGI JÄRGI)
+  // NUTIKAS TRAJEKTOORI GENERAATOR (RINGMARSRUUT SAMMUDE EESMÄRGI JÄRGI)
   // ==========================================================================
 
   function setupRouteGeneratorUI() {
@@ -818,14 +817,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolsBar = document.querySelector('.map-floating-tools');
     if (!viewport || !toolsBar) return;
 
-    // 1. Lisa võlukepi nupp kaardi parempoolsele tööriistaribale
     const magicFab = document.createElement('button');
     magicFab.className = 'tool-fab magic-fab';
     magicFab.title = 'Genereeri sammudeks trajektoor';
     magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
     toolsBar.prepend(magicFab);
 
-    // 2. Ehita hüpikkaart sammude valimiseks
     const popover = document.createElement('div');
     popover.id = 'routeGenPopover';
     popover.className = 'route-gen-popover';
@@ -880,7 +877,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Arvutab geomeetrilise abipunkti kauguse (m) ja suuna (rad) järgi
   function offsetCoordinate(originLatLng, distanceMeters, bearingRad) {
     const R = 6378137;
     const lat1 = (originLatLng.lat * Math.PI) / 180;
@@ -905,19 +901,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const targetMeters = targetSteps * strideMeters;
 
-    // Uuenda ka kasutaja päevast eesmärki, kui ta valis suurema sihi
     state.settings.stepGoal = targetSteps;
     const settingStepGoalEl = document.getElementById('settingStepGoal');
     if (settingStepGoalEl) settingStepGoalEl.value = targetSteps;
 
-    // Alguspunkt: kas olemasolev Pin A või kaardi keskpunkt
     const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
-
-    // Tee käänukuse koefitsient (tänavavõrgus on ring ~1.28x pikem kui sirgjooned)
     const effectivePerimeter = targetMeters / 1.28;
     const radiusMeters = effectivePerimeter / (2 * Math.PI);
 
-    // Vali iga kord veidi erinev suund, et iga genereerimine pakuks uut rada
     const baseAngle = Math.random() * 2 * Math.PI;
     const p1 = offsetCoordinate(startPoint, radiusMeters * 1.15, baseAngle);
     const p2 = offsetCoordinate(startPoint, radiusMeters * 1.35, baseAngle + Math.PI / 2.2);
@@ -926,7 +917,6 @@ document.addEventListener('DOMContentLoaded', () => {
     waypoints = [startPoint, p1, p2, p3];
 
     try {
-      // Küsi päris tänavate marsruut OSRM ruutimismootorilt
       const coordsQuery = [startPoint, p1, p2, p3, startPoint]
         .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
         .join(';');
@@ -949,7 +939,6 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('OSRM marsruudi varurežiim:', err);
     }
 
-    // Varurežiim, kui kasutaja on offline
     waypoints.push(startPoint);
     rebuildWaypoints();
     applyRouteDistanceMeters(targetMeters);
@@ -957,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE
+  // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE (ILMA SIMULEERITUD SAMMUDETA)
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -1001,15 +990,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isWalking) {
       startWalkText.textContent = 'Peata ja salvesta kõnd';
+      // Taimer mõõdab ainult reaalset kulunud aega ega lisa automaatselt samme
       walkTimer = setInterval(() => {
         state.today.durationSec += 1;
-        state.today.steps += 2;
         updateHudUI();
       }, 1000);
     } else {
       clearInterval(walkTimer);
       startWalkText.textContent = 'Alusta kõndimist';
-      if (state.today.steps > 0) {
+      if (state.today.steps > 0 || state.today.distanceKm > 0) {
         state.history.unshift({
           date: new Date().toLocaleString('et-EE'),
           steps: state.today.steps,
@@ -1021,7 +1010,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Alumine "+" nupp võimaldab nüüd nii samme lisada kui ka kohe trajektoori genereerida
   document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
     const popover = document.getElementById('routeGenPopover');
     if (popover) {
