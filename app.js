@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   EXPANDABLE ACCORDION HUD (ARCH HANDLE) + INLINE STEP ENTRY + SAFE LIT LOOP
+   CLEAN PRO HUD + 360° INTERACTIVE STEP DIAL PICKER + SAFE LIT CIRCULAR LOOP
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -30,11 +30,13 @@ function ensureSupabaseSDK() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Eemalda kella- ja tootjaühenduste vaade ning menüürida
+  // Eemalda kellaühenduste vaade ja alumise HUD-i "+" nupp, et vaade oleks 100% puhas
   const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
   if (syncNavBtn) syncNavBtn.remove();
   const syncModalEl = document.getElementById('syncModal');
   if (syncModalEl) syncModalEl.remove();
+  const quickAddBtn = document.getElementById('quickAddStepsBtn');
+  if (quickAddBtn) quickAddBtn.remove();
 
   if (window.lucide) {
     lucide.createIcons();
@@ -732,255 +734,323 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // LAIENEV ALUMINE HUD PANEEL (PUNASE KAARE NUPP + KIIRSAMMUDE LISAMINE)
+  // INTERAKTIIVNE SAMMUKETAS (360° DIAL PICKER) SAMMUDELE VAJUTADES
   // ==========================================================================
 
-  const bottomHud = document.querySelector('.bottom-hud');
-  let isHudExpanded = false;
+  const DIAL_RADIUS = 92;
+  const DIAL_CIRCUMFERENCE = 2 * Math.PI * DIAL_RADIUS;
+  let dialMode = 'walked'; // 'walked' | 'goal'
+  let tempWalkedSteps = 0;
+  let tempGoalSteps = 10000;
+  let isDraggingDial = false;
 
-  function setHudExpanded(expanded) {
-    if (!bottomHud) return;
-    isHudExpanded = !!expanded;
-    bottomHud.classList.toggle('expanded', isHudExpanded);
-    if (floatingShuffleBtn) {
-      floatingShuffleBtn.classList.toggle('hud-is-expanded', isHudExpanded);
-    }
-    if (isHudExpanded) {
-      const popover = document.getElementById('routeGenPopover');
-      if (popover) popover.classList.remove('open');
-      syncHudExpandedInputs();
-    }
-  }
+  function setupStepDialModal() {
+    const backdrop = document.createElement('div');
+    backdrop.id = 'stepDialBackdrop';
+    backdrop.className = 'step-dial-backdrop';
+    backdrop.innerHTML = `
+      <div class="step-dial-card">
+        <div class="step-dial-top">
+          <div class="step-dial-tabs">
+            <button type="button" class="dial-tab-btn active" data-dial-tab="walked">Täna tehtud</button>
+            <button type="button" class="dial-tab-btn" data-dial-tab="goal">Päeva eesmärk</button>
+          </div>
+          <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">✕</button>
+        </div>
 
-  function promptQuickWalkedSteps() {
-    const entered = prompt(
-      `Sisesta oma täna juba tehtud sammud (päeva eesmärk: ${(state.settings.stepGoal || 10000).toLocaleString('et-EE')}):`,
-      state.today.steps || 0
-    );
-    if (entered === null) return;
-    const parsed = Math.max(0, parseInt(entered.replace(/\s+/g, ''), 10) || 0);
-    const strideMeters = (state.settings.strideCm || 76) / 100;
-    state.today.steps = parsed;
-    state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
-    state.today.calories = Math.round(parsed * 0.04);
-    saveState();
-    updateHudUI();
-  }
+        <div class="dial-wheel-wrap" id="dialWheelWrap">
+          <svg class="dial-svg" viewBox="0 0 224 224">
+            <defs>
+              <linearGradient id="dialVioletGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#c084fc" />
+                <stop offset="100%" stop-color="#7c3aed" />
+              </linearGradient>
+            </defs>
+            <circle class="dial-track-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
+            <circle class="dial-ticks-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
+            <circle id="dialProgressCircle" class="dial-progress-circle" cx="112" cy="112" r="${DIAL_RADIUS}"
+              stroke-dasharray="${DIAL_CIRCUMFERENCE.toFixed(2)}"
+              stroke-dashoffset="${DIAL_CIRCUMFERENCE.toFixed(2)}"></circle>
+            <circle id="dialThumbHandle" class="dial-thumb-handle" cx="112" cy="20" r="11"></circle>
+          </svg>
 
-  function setupExpandableHudDrawer() {
-    if (!bottomHud) return;
-
-    // 1. Lisa punase kaare asukohta (ülemise serva keskele) lahtitõmbamise nupp
-    const archBtn = document.createElement('button');
-    archBtn.type = 'button';
-    archBtn.id = 'hudArchToggleBtn';
-    archBtn.className = 'hud-arch-handle';
-    archBtn.title = 'Ava või sulge kiirseaded ja sammude lisamine';
-    archBtn.innerHTML = '<span class="hud-arch-chevron">▲</span>';
-    bottomHud.prepend(archBtn);
-
-    archBtn.addEventListener('click', () => {
-      setHudExpanded(!isHudExpanded);
-    });
-
-    // Toeta ka sõrmega üles/alla tõmbamist (swipe) kaare pealt
-    let touchStartY = null;
-    archBtn.addEventListener(
-      'touchstart',
-      e => {
-        if (e.touches && e.touches[0]) {
-          touchStartY = e.touches[0].clientY;
-        }
-      },
-      { passive: true }
-    );
-
-    archBtn.addEventListener(
-      'touchend',
-      e => {
-        if (touchStartY === null || !e.changedTouches || !e.changedTouches[0]) return;
-        const deltaY = e.changedTouches[0].clientY - touchStartY;
-        if (deltaY < -20) setHudExpanded(true);
-        if (deltaY > 20) setHudExpanded(false);
-        touchStartY = null;
-      },
-      { passive: true }
-    );
-
-    // 2. Lisa otse esimesse (kompaktsesse) paneeli "✏️ Lisa" kiirnupp
-    const primaryLine = bottomHud.querySelector('.primary-step-line');
-    if (primaryLine) {
-      const quickEditBtn = document.createElement('button');
-      quickEditBtn.type = 'button';
-      quickEditBtn.className = 'hud-quick-edit-pill';
-      quickEditBtn.title = 'Sisesta täna tehtud sammud';
-      quickEditBtn.textContent = '✏️ Lisa sammud';
-      primaryLine.appendChild(quickEditBtn);
-
-      quickEditBtn.addEventListener('click', () => {
-        // Ava HUD-i sahtel ja suuna kursor kohe tehtud sammude lahtrisse
-        setHudExpanded(true);
-        const walkedInput = document.getElementById('hudWalkedStepsInput');
-        if (walkedInput) {
-          setTimeout(() => {
-            walkedInput.focus();
-            walkedInput.select();
-          }, 150);
-        }
-      });
-    }
-
-    // Lubame ka suurele sammunumbrile vajutades kohe samme muuta
-    const liveStepsEl = document.getElementById('liveSteps');
-    if (liveStepsEl) {
-      liveStepsEl.addEventListener('click', promptQuickWalkedSteps);
-    }
-
-    // 3. Ehita lahtiklapitav seadete ja sammude sahtel HUD-i sisse
-    const actionRow = bottomHud.querySelector('.hud-action-row');
-    const expPanel = document.createElement('div');
-    expPanel.id = 'hudExpandablePanel';
-    expPanel.className = 'hud-expandable-panel';
-    expPanel.innerHTML = `
-      <div class="hud-exp-grid">
-        <div class="hud-exp-box">
-          <span class="hud-exp-label">👟 Täna tehtud sammud</span>
-          <div class="hud-exp-input-group">
-            <input type="number" id="hudWalkedStepsInput" class="hud-exp-input" value="${state.today.steps || 0}" min="0" step="100" />
-            <button type="button" id="hudSaveWalkedBtn" class="hud-exp-save-btn">OK</button>
+          <div class="dial-center-readout">
+            <span class="dial-mode-caption" id="dialModeCaption">Täna tehtud</span>
+            <div class="dial-big-value" id="dialBigValue" title="Puuduta täpse arvu sisestamiseks">0</div>
+            <span class="dial-unit-sub" id="dialUnitSub">sammu • 0.00 km</span>
+            <div class="dial-missing-summary" id="dialMissingSummary">Puudu: 10 000 sammu</div>
           </div>
         </div>
-        <div class="hud-exp-box">
-          <span class="hud-exp-label">🎯 Päeva eesmärk</span>
-          <div class="hud-exp-input-group">
-            <input type="number" id="hudGoalStepsInput" class="hud-exp-input" value="${state.settings.stepGoal || 10000}" min="1000" step="500" />
-            <button type="button" id="hudSaveGoalBtn" class="hud-exp-save-btn">OK</button>
-          </div>
+
+        <div class="dial-steppers-row">
+          <button type="button" class="dial-step-btn" data-delta="-500">-500</button>
+          <button type="button" class="dial-step-btn" data-delta="-100">-100</button>
+          <button type="button" class="dial-step-btn" data-delta="100">+100</button>
+          <button type="button" class="dial-step-btn" data-delta="500">+500</button>
+        </div>
+
+        <div class="dial-actions-col">
+          <button type="button" id="dialSaveAndRouteBtn" class="btn-dial-primary-route">
+            ✨ Salvesta & koosta puuduv ring
+          </button>
+          <button type="button" id="dialSaveOnlyBtn" class="btn-dial-secondary-save">
+            Salvesta sammud
+          </button>
         </div>
       </div>
-
-      <div class="hud-exp-row-inline">
-        <span class="hud-exp-inline-title">📏 Sammupikkus (cm):</span>
-        <input type="number" id="hudStrideInput" class="hud-exp-stride-input" value="${state.settings.strideCm || 76}" min="40" max="120" />
-        <button type="button" id="hudSafeModeChip" class="hud-exp-safe-chip ${state.settings.safeLitOnly !== false ? '' : 'off'}">
-          ${state.settings.safeLitOnly !== false ? '🔦 Valgustatud: SEES' : '🌲 Kõik rajad'}
-        </button>
-      </div>
-
-      <button type="button" id="hudGenerateMissingBtn" class="hud-exp-route-btn">
-        ✨ Koosta puuduvate sammude ring
-      </button>
     `;
 
-    if (actionRow) {
-      bottomHud.insertBefore(expPanel, actionRow);
-    } else {
-      bottomHud.appendChild(expPanel);
+    document.body.appendChild(backdrop);
+
+    // Ava ketas, kui kasutaja vajutab alumisel HUD-il sammudele, eesmärgile või protsendirõngale
+    const primaryLine = document.querySelector('.primary-step-line');
+    const stepRingContainer = document.querySelector('.step-ring-container');
+
+    if (primaryLine) {
+      let hintBadge = primaryLine.querySelector('.step-dial-trigger-hint');
+      if (!hintBadge) {
+        hintBadge = document.createElement('span');
+        hintBadge.id = 'hudMissingHintBadge';
+        hintBadge.className = 'step-dial-trigger-hint';
+        hintBadge.textContent = 'Muuda';
+        primaryLine.appendChild(hintBadge);
+      }
+      primaryLine.addEventListener('click', () => openStepDial('walked'));
     }
 
-    const walkedInput = document.getElementById('hudWalkedStepsInput');
-    const goalInput = document.getElementById('hudGoalStepsInput');
-    const strideInput = document.getElementById('hudStrideInput');
-    const safeChip = document.getElementById('hudSafeModeChip');
+    if (stepRingContainer) {
+      stepRingContainer.addEventListener('click', () => openStepDial('walked'));
+    }
 
-    const saveWalkedFromHud = () => {
-      const parsed = Math.max(0, parseInt(walkedInput.value, 10) || 0);
+    // Ülemine parempoolne nupp avab samuti sammuketta
+    const quickSyncBtn = document.getElementById('quickSyncBtn');
+    if (quickSyncBtn) {
+      quickSyncBtn.title = 'Ava sammuketas';
+      quickSyncBtn.addEventListener('click', () => openStepDial('walked'));
+    }
+
+    // Vahekaartide vahetus (Täna tehtud vs Päeva eesmärk)
+    backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dialMode = btn.getAttribute('data-dial-tab');
+        backdrop.querySelectorAll('.dial-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderDialPosition();
+      });
+    });
+
+    // Sulgemine
+    document.getElementById('closeStepDialBtn').addEventListener('click', closeStepDial);
+    backdrop.addEventListener('click', e => {
+      if (e.target === backdrop) closeStepDial();
+    });
+
+    // Täppisnupud (-500, -100, +100, +500)
+    backdrop.querySelectorAll('.dial-step-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const delta = parseInt(btn.getAttribute('data-delta'), 10);
+        if (dialMode === 'walked') {
+          tempWalkedSteps = Math.max(0, tempWalkedSteps + delta);
+        } else {
+          tempGoalSteps = Math.max(1000, tempGoalSteps + delta);
+        }
+        renderDialPosition();
+      });
+    });
+
+    // Keskmisele suurele numbrile vajutades saab ka klaviatuurilt täpse väärtuse trükkida
+    document.getElementById('dialBigValue').addEventListener('click', () => {
+      const currentVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
+      const label =
+        dialMode === 'walked'
+          ? 'Sisesta täpne täna tehtud sammude arv:'
+          : 'Sisesta päeva sammude eesmärk:';
+      const entered = prompt(label, currentVal);
+      if (entered === null) return;
+      const parsed = Math.max(0, parseInt(entered.replace(/\s+/g, ''), 10) || 0);
+      if (dialMode === 'walked') {
+        tempWalkedSteps = parsed;
+      } else {
+        tempGoalSteps = Math.max(1000, parsed);
+      }
+      renderDialPosition();
+    });
+
+    // Ketta sõrmega / hiirega pööramine (360° radiaalne liikumine)
+    const wheelWrap = document.getElementById('dialWheelWrap');
+
+    const updateFromPointer = (clientX, clientY) => {
+      const rect = wheelWrap.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+
+      let deg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+      if (deg < 0) deg += 360;
+      const fraction = Math.max(0, Math.min(1, deg / 360));
+
+      if (dialMode === 'walked') {
+        const maxScale = Math.max(1000, tempGoalSteps);
+        tempWalkedSteps = Math.round((fraction * maxScale) / 100) * 100;
+      } else {
+        const maxGoalScale = 25000;
+        const rawGoal = 1000 + fraction * (maxGoalScale - 1000);
+        tempGoalSteps = Math.round(rawGoal / 500) * 500;
+      }
+      renderDialPosition();
+    };
+
+    wheelWrap.addEventListener('mousedown', e => {
+      if (e.target.id === 'dialBigValue') return;
+      isDraggingDial = true;
+      updateFromPointer(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!isDraggingDial) return;
+      updateFromPointer(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDraggingDial = false;
+    });
+
+    wheelWrap.addEventListener(
+      'touchstart',
+      e => {
+        if (e.target.id === 'dialBigValue') return;
+        if (e.touches && e.touches[0]) {
+          isDraggingDial = true;
+          updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      },
+      { passive: true }
+    );
+
+    wheelWrap.addEventListener(
+      'touchmove',
+      e => {
+        if (!isDraggingDial || !e.touches || !e.touches[0]) return;
+        updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
+      },
+      { passive: true }
+    );
+
+    wheelWrap.addEventListener(
+      'touchend',
+      () => {
+        isDraggingDial = false;
+      },
+      { passive: true }
+    );
+
+    // Salvestamise nupud
+    const commitDialValues = () => {
       const strideMeters = (state.settings.strideCm || 76) / 100;
-      state.today.steps = parsed;
-      state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
-      state.today.calories = Math.round(parsed * 0.04);
-      saveState();
-      updateHudUI();
-    };
+      state.today.steps = Math.max(0, tempWalkedSteps);
+      state.today.distanceKm = +((state.today.steps * strideMeters) / 1000).toFixed(2);
+      state.today.calories = Math.round(state.today.steps * 0.04);
+      state.settings.stepGoal = Math.max(1000, tempGoalSteps);
 
-    const saveGoalFromHud = () => {
-      const parsed = Math.max(1000, parseInt(goalInput.value, 10) || 10000);
-      state.settings.stepGoal = parsed;
       const settingStepGoalEl = document.getElementById('settingStepGoal');
-      if (settingStepGoalEl) settingStepGoalEl.value = parsed;
+      if (settingStepGoalEl) settingStepGoalEl.value = state.settings.stepGoal;
+
       saveState();
       updateHudUI();
     };
 
-    document.getElementById('hudSaveWalkedBtn').addEventListener('click', saveWalkedFromHud);
-    walkedInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        saveWalkedFromHud();
-        walkedInput.blur();
-      }
+    document.getElementById('dialSaveOnlyBtn').addEventListener('click', () => {
+      commitDialValues();
+      closeStepDial();
     });
 
-    document.getElementById('hudSaveGoalBtn').addEventListener('click', saveGoalFromHud);
-    goalInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        saveGoalFromHud();
-        goalInput.blur();
-      }
-    });
-
-    strideInput.addEventListener('change', () => {
-      const parsed = Math.max(40, parseInt(strideInput.value, 10) || 76);
-      state.settings.strideCm = parsed;
-      const settingStrideEl = document.getElementById('settingStrideLength');
-      if (settingStrideEl) settingStrideEl.value = parsed;
-      saveState();
-      updateHudUI();
-    });
-
-    safeChip.addEventListener('click', () => {
-      state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
-      syncHudExpandedInputs();
-      updateFloatingShuffleLabel();
-      saveState();
-    });
-
-    document.getElementById('hudGenerateMissingBtn').addEventListener('click', () => {
-      saveWalkedFromHud();
-      saveGoalFromHud();
+    document.getElementById('dialSaveAndRouteBtn').addEventListener('click', () => {
+      commitDialValues();
+      closeStepDial();
       const missing = getMissingSteps();
       const stepsToGenerate = missing >= 300 ? missing : 3000;
-      setHudExpanded(false);
       generateLoopRouteForSteps(stepsToGenerate);
     });
   }
 
-  function syncHudExpandedInputs() {
-    const walkedInput = document.getElementById('hudWalkedStepsInput');
-    const goalInput = document.getElementById('hudGoalStepsInput');
-    const strideInput = document.getElementById('hudStrideInput');
-    const safeChip = document.getElementById('hudSafeModeChip');
-    const genBtn = document.getElementById('hudGenerateMissingBtn');
+  function openStepDial(initialMode = 'walked') {
+    const backdrop = document.getElementById('stepDialBackdrop');
+    if (!backdrop) return;
+    dialMode = initialMode;
+    tempWalkedSteps = state.today.steps || 0;
+    tempGoalSteps = state.settings.stepGoal || 10000;
 
-    if (walkedInput && document.activeElement !== walkedInput) {
-      walkedInput.value = state.today.steps || 0;
-    }
-    if (goalInput && document.activeElement !== goalInput) {
-      goalInput.value = state.settings.stepGoal || 10000;
-    }
-    if (strideInput && document.activeElement !== strideInput) {
-      strideInput.value = state.settings.strideCm || 76;
-    }
-    if (safeChip) {
-      const active = state.settings.safeLitOnly !== false;
-      safeChip.classList.toggle('off', !active);
-      safeChip.textContent = active ? '🔦 Valgustatud: SEES' : '🌲 Kõik rajad';
-    }
-    if (genBtn) {
-      const missing = getMissingSteps();
-      genBtn.textContent =
-        missing > 0
-          ? `✨ Koosta puuduv ring (${missing.toLocaleString('et-EE')} sammu)`
-          : '✨ Eesmärk täis! Koosta lisaring (3 000)';
-    }
+    backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-dial-tab') === dialMode);
+    });
+
+    renderDialPosition();
+    backdrop.classList.add('open');
   }
 
-  // Ülemine parempoolne nupp avab/sulgeb samuti alumise laieneva HUD-paneeli
-  const quickSyncBtn = document.getElementById('quickSyncBtn');
-  if (quickSyncBtn) {
-    quickSyncBtn.title = 'Ava kiirseaded ja sammude lisamine';
-    quickSyncBtn.addEventListener('click', () => {
-      setHudExpanded(!isHudExpanded);
-    });
+  function closeStepDial() {
+    const backdrop = document.getElementById('stepDialBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  function renderDialPosition() {
+    const progressCircle = document.getElementById('dialProgressCircle');
+    const thumbHandle = document.getElementById('dialThumbHandle');
+    const captionEl = document.getElementById('dialModeCaption');
+    const bigValEl = document.getElementById('dialBigValue');
+    const unitSubEl = document.getElementById('dialUnitSub');
+    const missingSummaryEl = document.getElementById('dialMissingSummary');
+    const routeBtnEl = document.getElementById('dialSaveAndRouteBtn');
+
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    const activeVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
+    const maxRef = dialMode === 'walked' ? Math.max(1000, tempGoalSteps) : 25000;
+    const minRef = dialMode === 'walked' ? 0 : 1000;
+
+    const fraction = Math.max(0, Math.min(1, (activeVal - minRef) / (maxRef - minRef)));
+    const offset = DIAL_CIRCUMFERENCE - fraction * DIAL_CIRCUMFERENCE;
+    if (progressCircle) {
+      progressCircle.style.strokeDashoffset = offset.toFixed(2);
+    }
+
+    const angleRad = (fraction * 360 - 90) * (Math.PI / 180);
+    const tx = 112 + DIAL_RADIUS * Math.cos(angleRad);
+    const ty = 112 + DIAL_RADIUS * Math.sin(angleRad);
+    if (thumbHandle) {
+      thumbHandle.setAttribute('cx', tx.toFixed(2));
+      thumbHandle.setAttribute('cy', ty.toFixed(2));
+    }
+
+    if (captionEl) {
+      captionEl.textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
+    }
+    if (bigValEl) {
+      bigValEl.textContent = activeVal.toLocaleString('et-EE');
+    }
+
+    const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
+    if (unitSubEl) {
+      unitSubEl.textContent = `sammu • ~${activeKm} km`;
+    }
+
+    const missing = Math.max(0, tempGoalSteps - tempWalkedSteps);
+    const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
+
+    if (missingSummaryEl) {
+      if (missing > 0) {
+        missingSummaryEl.textContent = `Puudu: ${missing.toLocaleString('et-EE')} sammu (~${missingKm} km)`;
+      } else {
+        missingSummaryEl.textContent = '🎉 Päeva eesmärk täidetud!';
+      }
+    }
+
+    if (routeBtnEl) {
+      routeBtnEl.textContent =
+        missing > 0
+          ? `✨ Salvesta & koosta ${missing.toLocaleString('et-EE')} sammu ring`
+          : '✨ Salvesta & koosta lisaring (3 000)';
+    }
   }
 
   // ==========================================================================
@@ -1130,10 +1200,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   map.on('click', e => {
-    if (isHudExpanded) {
-      setHudExpanded(false);
-      return;
-    }
     waypoints.push(e.latlng);
     rebuildWaypoints();
   });
@@ -1176,10 +1242,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR:
-  // 1) "🔦 Ainult valgustatud tänavad / Ohutu ring" (väldib metsaradu)
-  // 2) Päris ümara ringi matemaatika (keskpunkt nihutatud, 90° sammud)
-  // 3) Tupikute ja maantee tagasipöörete eemaldamine
+  // NUTIKAS TRAJEKTOORI GENERAATOR (PAREMAL TÖÖRIISTARIBAL ✨)
   // ==========================================================================
 
   function setupRouteGeneratorUI() {
@@ -1252,7 +1315,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const missingHint = document.getElementById('routeGenMissingHint');
 
     const togglePopover = () => {
-      if (isHudExpanded) setHudExpanded(false);
       const missing = getMissingSteps();
       const suggested = missing >= 300 ? missing : 3000;
       stepsInput.value = suggested;
@@ -1283,7 +1345,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
         : 'Metsa-, pargi- ja loodusrajad on lubatud';
       safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
-      syncHudExpandedInputs();
       updateFloatingShuffleLabel();
       saveState();
     });
@@ -1594,7 +1655,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // ALUMINE HUD, TAIMER JA PÄRIS GPS-KÕNDIMINE
+  // PUHAS ALUMINE HUD, TAIMER JA PÄRIS GPS-KÕNDIMINE
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -1618,11 +1679,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('liveSteps').textContent = steps.toLocaleString('et-EE');
     const goalLabelEl = document.getElementById('goalStepsLabel');
     if (goalLabelEl) {
-      goalLabelEl.textContent =
-        missing > 0
-          ? `${goal.toLocaleString('et-EE')} (puudu ${missing.toLocaleString('et-EE')})`
-          : `${goal.toLocaleString('et-EE')} (täidetud ✓)`;
+      goalLabelEl.textContent = goal.toLocaleString('et-EE');
     }
+
+    const hintBadge = document.getElementById('hudMissingHintBadge');
+    if (hintBadge) {
+      hintBadge.textContent =
+        missing > 0
+          ? `Puudu ${missing.toLocaleString('et-EE')}`
+          : 'Täidetud ✓';
+    }
+
     document.getElementById('stepPercentText').textContent = `${pct}%`;
 
     const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
@@ -1635,8 +1702,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('liveDistance').textContent = state.today.distanceKm.toFixed(2);
     document.getElementById('liveCalories').textContent = state.today.calories;
     document.getElementById('liveDuration').textContent = formatDuration(state.today.durationSec);
-
-    syncHudExpandedInputs();
   }
 
   const startWalkBtn = document.getElementById('startWalkBtn');
@@ -1647,7 +1712,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startWalkBtn.classList.toggle('walking-active', isWalking);
 
     if (isWalking) {
-      if (isHudExpanded) setHudExpanded(false);
       startWalkText.textContent = 'Peata ja salvesta kõnd';
       lastGpsLatLng = null;
 
@@ -1694,19 +1758,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         saveState();
       }
-    }
-  });
-
-  document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
-    if (isHudExpanded) setHudExpanded(false);
-    const popover = document.getElementById('routeGenPopover');
-    const stepsInput = document.getElementById('targetRouteStepsInput');
-    if (stepsInput) {
-      const missing = getMissingSteps();
-      stepsInput.value = missing >= 300 ? missing : 3000;
-    }
-    if (popover) {
-      popover.classList.toggle('open');
     }
   });
 
@@ -1795,7 +1846,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Alglaadimine
-  setupExpandableHudDrawer();
+  setupStepDialModal();
   setupRouteGeneratorUI();
   renderProfile();
   checkAdminAccess();
