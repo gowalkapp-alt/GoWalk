@@ -1,11 +1,9 @@
-@import "variables.css";
-@import "layout.css";
-@import "hud.css";
-@import "dial.css";
-@import "drawer.css";
+/* ==========================================================================
+   GOWALK PRO — MASTER STYLESHEET (IMPORTS ALL CSS MODULES)
+   ========================================================================== */
 
-/* Ühtsed Lucide SVG stiilid */
-.gw-inline-icon { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; fill: none; flex-shrink: 0; }
-.gw-inline-icon.sm { width: 14px; height: 14px; }
-.gw-spin { animation: gwSpin 0.9s linear infinite; }
-@keyframes gwSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@import url('./variables.css');
+@import url('./layout.css');
+@import url('./hud.css');
+@import url('./dial.css');
+@import url('./drawer.css');
