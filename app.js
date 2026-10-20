@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   CLEAN MINIMAL HUD + DRAWER STEP/GOAL PANEL + SAFE LIT CIRCULAR ROUTE
+   EXPANDABLE ACCORDION HUD (ARCH HANDLE) + INLINE STEP ENTRY + SAFE LIT LOOP
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -35,10 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (syncNavBtn) syncNavBtn.remove();
   const syncModalEl = document.getElementById('syncModal');
   if (syncModalEl) syncModalEl.remove();
-
-  // Eemalda võimalik vana alumise HUD-i lisabänner, kui see peaks DOM-is olema
-  const oldBanner = document.getElementById('missingStepsBanner');
-  if (oldBanner) oldBanner.remove();
 
   if (window.lucide) {
     lucide.createIcons();
@@ -645,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // LIUGMENÜÜ (DRAWER) + SAMMUDE LISAMISE & EESMÄRGI PLOKK MENÜÜ SEES
+  // LIUGMENÜÜ (DRAWER) & ALAMVAADETE NAVIGATSIOON
   // ==========================================================================
 
   const sidebarDrawer = document.getElementById('sidebarDrawer');
@@ -656,7 +652,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const subviewModals = document.querySelectorAll('.subview-modal');
 
   function openDrawer() {
-    syncDrawerStepInputs();
     sidebarDrawer.classList.add('open');
     drawerOverlay.classList.add('open');
   }
@@ -669,107 +664,6 @@ document.addEventListener('DOMContentLoaded', () => {
   openDrawerBtn.addEventListener('click', openDrawer);
   closeDrawerBtn.addEventListener('click', closeDrawer);
   drawerOverlay.addEventListener('click', closeDrawer);
-
-  // Ehita liugmenüüsse "Päeva sammud & eesmärk" kiirpaneel
-  function setupDrawerStepsControl() {
-    const drawerNav = document.querySelector('.drawer-nav');
-    if (!sidebarDrawer || !drawerNav) return;
-
-    const existing = document.getElementById('drawerStepsPanel');
-    if (existing) existing.remove();
-
-    const panel = document.createElement('div');
-    panel.id = 'drawerStepsPanel';
-    panel.className = 'drawer-steps-panel';
-    panel.innerHTML = `
-      <div class="drawer-steps-header">
-        <span class="drawer-steps-title">🎯 Päeva sammud & eesmärk</span>
-        <span class="drawer-missing-badge" id="drawerMissingBadge">Puudu: 10 000</span>
-      </div>
-      <div class="drawer-step-row">
-        <span class="drawer-step-label">Täna tehtud sammud:</span>
-        <div class="drawer-step-controls">
-          <input type="number" id="drawerWalkedStepsInput" class="drawer-step-input" value="${state.today.steps || 0}" min="0" step="100" />
-          <button type="button" id="drawerSaveWalkedBtn" class="drawer-step-save-btn">Lisa</button>
-        </div>
-      </div>
-      <div class="drawer-step-row">
-        <span class="drawer-step-label">Päeva eesmärk:</span>
-        <div class="drawer-step-controls">
-          <input type="number" id="drawerGoalStepsInput" class="drawer-step-input" value="${state.settings.stepGoal || 10000}" min="1000" step="500" />
-          <button type="button" id="drawerSaveGoalBtn" class="drawer-step-save-btn">Määra</button>
-        </div>
-      </div>
-      <button type="button" id="drawerGenerateMissingRouteBtn" class="drawer-generate-missing-btn">
-        ✨ Koosta puuduvate sammude ring
-      </button>
-    `;
-
-    sidebarDrawer.insertBefore(panel, drawerNav);
-
-    const walkedInput = document.getElementById('drawerWalkedStepsInput');
-    const goalInput = document.getElementById('drawerGoalStepsInput');
-
-    const applyWalkedSteps = () => {
-      const parsed = Math.max(0, parseInt(walkedInput.value, 10) || 0);
-      const strideMeters = (state.settings.strideCm || 76) / 100;
-      state.today.steps = parsed;
-      state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
-      state.today.calories = Math.round(parsed * 0.04);
-      saveState();
-      updateHudUI();
-      syncDrawerStepInputs();
-    };
-
-    const applyGoalSteps = () => {
-      const parsed = Math.max(1000, parseInt(goalInput.value, 10) || 10000);
-      state.settings.stepGoal = parsed;
-      const settingStepGoalEl = document.getElementById('settingStepGoal');
-      if (settingStepGoalEl) settingStepGoalEl.value = parsed;
-      saveState();
-      updateHudUI();
-      syncDrawerStepInputs();
-    };
-
-    document.getElementById('drawerSaveWalkedBtn').addEventListener('click', applyWalkedSteps);
-    document.getElementById('drawerSaveGoalBtn').addEventListener('click', applyGoalSteps);
-
-    document.getElementById('drawerGenerateMissingRouteBtn').addEventListener('click', () => {
-      applyWalkedSteps();
-      applyGoalSteps();
-      const missing = getMissingSteps();
-      const stepsToGenerate = missing >= 300 ? missing : 3000;
-      closeDrawer();
-      generateLoopRouteForSteps(stepsToGenerate);
-    });
-  }
-
-  function syncDrawerStepInputs() {
-    const walkedInput = document.getElementById('drawerWalkedStepsInput');
-    const goalInput = document.getElementById('drawerGoalStepsInput');
-    const badge = document.getElementById('drawerMissingBadge');
-    const genBtn = document.getElementById('drawerGenerateMissingRouteBtn');
-
-    if (walkedInput) walkedInput.value = state.today.steps || 0;
-    if (goalInput) goalInput.value = state.settings.stepGoal || 10000;
-
-    const missing = getMissingSteps();
-    if (badge) {
-      if (missing > 0) {
-        badge.classList.remove('done');
-        badge.textContent = `Puudu: ${missing.toLocaleString('et-EE')}`;
-      } else {
-        badge.classList.add('done');
-        badge.textContent = 'Täidetud ✓';
-      }
-    }
-    if (genBtn) {
-      genBtn.textContent =
-        missing > 0
-          ? `✨ Koosta puuduv ring (${missing.toLocaleString('et-EE')} sammu)`
-          : '✨ Koosta lisaring (3 000 sammu)';
-    }
-  }
 
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -801,17 +695,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (homeNav) homeNav.classList.add('active');
     });
   });
-
-  // Ülemine parempoolne nupp avab nüüd otse liugmenüü sammude/eesmärgi ploki
-  const quickSyncBtn = document.getElementById('quickSyncBtn');
-  if (quickSyncBtn) {
-    quickSyncBtn.title = 'Lisa tehtud sammud või muuda eesmärki';
-    quickSyncBtn.addEventListener('click', () => {
-      openDrawer();
-      const walkedInput = document.getElementById('drawerWalkedStepsInput');
-      if (walkedInput) setTimeout(() => walkedInput.focus(), 250);
-    });
-  }
 
   // ==========================================================================
   // KASUTAJAPROFIILI MUUTMINE
@@ -847,6 +730,258 @@ document.addEventListener('DOMContentLoaded', () => {
     saveState();
     renderProfile();
   });
+
+  // ==========================================================================
+  // LAIENEV ALUMINE HUD PANEEL (PUNASE KAARE NUPP + KIIRSAMMUDE LISAMINE)
+  // ==========================================================================
+
+  const bottomHud = document.querySelector('.bottom-hud');
+  let isHudExpanded = false;
+
+  function setHudExpanded(expanded) {
+    if (!bottomHud) return;
+    isHudExpanded = !!expanded;
+    bottomHud.classList.toggle('expanded', isHudExpanded);
+    if (floatingShuffleBtn) {
+      floatingShuffleBtn.classList.toggle('hud-is-expanded', isHudExpanded);
+    }
+    if (isHudExpanded) {
+      const popover = document.getElementById('routeGenPopover');
+      if (popover) popover.classList.remove('open');
+      syncHudExpandedInputs();
+    }
+  }
+
+  function promptQuickWalkedSteps() {
+    const entered = prompt(
+      `Sisesta oma täna juba tehtud sammud (päeva eesmärk: ${(state.settings.stepGoal || 10000).toLocaleString('et-EE')}):`,
+      state.today.steps || 0
+    );
+    if (entered === null) return;
+    const parsed = Math.max(0, parseInt(entered.replace(/\s+/g, ''), 10) || 0);
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    state.today.steps = parsed;
+    state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
+    state.today.calories = Math.round(parsed * 0.04);
+    saveState();
+    updateHudUI();
+  }
+
+  function setupExpandableHudDrawer() {
+    if (!bottomHud) return;
+
+    // 1. Lisa punase kaare asukohta (ülemise serva keskele) lahtitõmbamise nupp
+    const archBtn = document.createElement('button');
+    archBtn.type = 'button';
+    archBtn.id = 'hudArchToggleBtn';
+    archBtn.className = 'hud-arch-handle';
+    archBtn.title = 'Ava või sulge kiirseaded ja sammude lisamine';
+    archBtn.innerHTML = '<span class="hud-arch-chevron">▲</span>';
+    bottomHud.prepend(archBtn);
+
+    archBtn.addEventListener('click', () => {
+      setHudExpanded(!isHudExpanded);
+    });
+
+    // Toeta ka sõrmega üles/alla tõmbamist (swipe) kaare pealt
+    let touchStartY = null;
+    archBtn.addEventListener(
+      'touchstart',
+      e => {
+        if (e.touches && e.touches[0]) {
+          touchStartY = e.touches[0].clientY;
+        }
+      },
+      { passive: true }
+    );
+
+    archBtn.addEventListener(
+      'touchend',
+      e => {
+        if (touchStartY === null || !e.changedTouches || !e.changedTouches[0]) return;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        if (deltaY < -20) setHudExpanded(true);
+        if (deltaY > 20) setHudExpanded(false);
+        touchStartY = null;
+      },
+      { passive: true }
+    );
+
+    // 2. Lisa otse esimesse (kompaktsesse) paneeli "✏️ Lisa" kiirnupp
+    const primaryLine = bottomHud.querySelector('.primary-step-line');
+    if (primaryLine) {
+      const quickEditBtn = document.createElement('button');
+      quickEditBtn.type = 'button';
+      quickEditBtn.className = 'hud-quick-edit-pill';
+      quickEditBtn.title = 'Sisesta täna tehtud sammud';
+      quickEditBtn.textContent = '✏️ Lisa sammud';
+      primaryLine.appendChild(quickEditBtn);
+
+      quickEditBtn.addEventListener('click', () => {
+        // Ava HUD-i sahtel ja suuna kursor kohe tehtud sammude lahtrisse
+        setHudExpanded(true);
+        const walkedInput = document.getElementById('hudWalkedStepsInput');
+        if (walkedInput) {
+          setTimeout(() => {
+            walkedInput.focus();
+            walkedInput.select();
+          }, 150);
+        }
+      });
+    }
+
+    // Lubame ka suurele sammunumbrile vajutades kohe samme muuta
+    const liveStepsEl = document.getElementById('liveSteps');
+    if (liveStepsEl) {
+      liveStepsEl.addEventListener('click', promptQuickWalkedSteps);
+    }
+
+    // 3. Ehita lahtiklapitav seadete ja sammude sahtel HUD-i sisse
+    const actionRow = bottomHud.querySelector('.hud-action-row');
+    const expPanel = document.createElement('div');
+    expPanel.id = 'hudExpandablePanel';
+    expPanel.className = 'hud-expandable-panel';
+    expPanel.innerHTML = `
+      <div class="hud-exp-grid">
+        <div class="hud-exp-box">
+          <span class="hud-exp-label">👟 Täna tehtud sammud</span>
+          <div class="hud-exp-input-group">
+            <input type="number" id="hudWalkedStepsInput" class="hud-exp-input" value="${state.today.steps || 0}" min="0" step="100" />
+            <button type="button" id="hudSaveWalkedBtn" class="hud-exp-save-btn">OK</button>
+          </div>
+        </div>
+        <div class="hud-exp-box">
+          <span class="hud-exp-label">🎯 Päeva eesmärk</span>
+          <div class="hud-exp-input-group">
+            <input type="number" id="hudGoalStepsInput" class="hud-exp-input" value="${state.settings.stepGoal || 10000}" min="1000" step="500" />
+            <button type="button" id="hudSaveGoalBtn" class="hud-exp-save-btn">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-exp-row-inline">
+        <span class="hud-exp-inline-title">📏 Sammupikkus (cm):</span>
+        <input type="number" id="hudStrideInput" class="hud-exp-stride-input" value="${state.settings.strideCm || 76}" min="40" max="120" />
+        <button type="button" id="hudSafeModeChip" class="hud-exp-safe-chip ${state.settings.safeLitOnly !== false ? '' : 'off'}">
+          ${state.settings.safeLitOnly !== false ? '🔦 Valgustatud: SEES' : '🌲 Kõik rajad'}
+        </button>
+      </div>
+
+      <button type="button" id="hudGenerateMissingBtn" class="hud-exp-route-btn">
+        ✨ Koosta puuduvate sammude ring
+      </button>
+    `;
+
+    if (actionRow) {
+      bottomHud.insertBefore(expPanel, actionRow);
+    } else {
+      bottomHud.appendChild(expPanel);
+    }
+
+    const walkedInput = document.getElementById('hudWalkedStepsInput');
+    const goalInput = document.getElementById('hudGoalStepsInput');
+    const strideInput = document.getElementById('hudStrideInput');
+    const safeChip = document.getElementById('hudSafeModeChip');
+
+    const saveWalkedFromHud = () => {
+      const parsed = Math.max(0, parseInt(walkedInput.value, 10) || 0);
+      const strideMeters = (state.settings.strideCm || 76) / 100;
+      state.today.steps = parsed;
+      state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
+      state.today.calories = Math.round(parsed * 0.04);
+      saveState();
+      updateHudUI();
+    };
+
+    const saveGoalFromHud = () => {
+      const parsed = Math.max(1000, parseInt(goalInput.value, 10) || 10000);
+      state.settings.stepGoal = parsed;
+      const settingStepGoalEl = document.getElementById('settingStepGoal');
+      if (settingStepGoalEl) settingStepGoalEl.value = parsed;
+      saveState();
+      updateHudUI();
+    };
+
+    document.getElementById('hudSaveWalkedBtn').addEventListener('click', saveWalkedFromHud);
+    walkedInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        saveWalkedFromHud();
+        walkedInput.blur();
+      }
+    });
+
+    document.getElementById('hudSaveGoalBtn').addEventListener('click', saveGoalFromHud);
+    goalInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        saveGoalFromHud();
+        goalInput.blur();
+      }
+    });
+
+    strideInput.addEventListener('change', () => {
+      const parsed = Math.max(40, parseInt(strideInput.value, 10) || 76);
+      state.settings.strideCm = parsed;
+      const settingStrideEl = document.getElementById('settingStrideLength');
+      if (settingStrideEl) settingStrideEl.value = parsed;
+      saveState();
+      updateHudUI();
+    });
+
+    safeChip.addEventListener('click', () => {
+      state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
+      syncHudExpandedInputs();
+      updateFloatingShuffleLabel();
+      saveState();
+    });
+
+    document.getElementById('hudGenerateMissingBtn').addEventListener('click', () => {
+      saveWalkedFromHud();
+      saveGoalFromHud();
+      const missing = getMissingSteps();
+      const stepsToGenerate = missing >= 300 ? missing : 3000;
+      setHudExpanded(false);
+      generateLoopRouteForSteps(stepsToGenerate);
+    });
+  }
+
+  function syncHudExpandedInputs() {
+    const walkedInput = document.getElementById('hudWalkedStepsInput');
+    const goalInput = document.getElementById('hudGoalStepsInput');
+    const strideInput = document.getElementById('hudStrideInput');
+    const safeChip = document.getElementById('hudSafeModeChip');
+    const genBtn = document.getElementById('hudGenerateMissingBtn');
+
+    if (walkedInput && document.activeElement !== walkedInput) {
+      walkedInput.value = state.today.steps || 0;
+    }
+    if (goalInput && document.activeElement !== goalInput) {
+      goalInput.value = state.settings.stepGoal || 10000;
+    }
+    if (strideInput && document.activeElement !== strideInput) {
+      strideInput.value = state.settings.strideCm || 76;
+    }
+    if (safeChip) {
+      const active = state.settings.safeLitOnly !== false;
+      safeChip.classList.toggle('off', !active);
+      safeChip.textContent = active ? '🔦 Valgustatud: SEES' : '🌲 Kõik rajad';
+    }
+    if (genBtn) {
+      const missing = getMissingSteps();
+      genBtn.textContent =
+        missing > 0
+          ? `✨ Koosta puuduv ring (${missing.toLocaleString('et-EE')} sammu)`
+          : '✨ Eesmärk täis! Koosta lisaring (3 000)';
+    }
+  }
+
+  // Ülemine parempoolne nupp avab/sulgeb samuti alumise laieneva HUD-paneeli
+  const quickSyncBtn = document.getElementById('quickSyncBtn');
+  if (quickSyncBtn) {
+    quickSyncBtn.title = 'Ava kiirseaded ja sammude lisamine';
+    quickSyncBtn.addEventListener('click', () => {
+      setHudExpanded(!isHudExpanded);
+    });
+  }
 
   // ==========================================================================
   // TÄISEKRAANI KAART + OHUTU/VALGUSTATUD RINGTRAJEKTOORI GENERAATOR
@@ -995,6 +1130,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   map.on('click', e => {
+    if (isHudExpanded) {
+      setHudExpanded(false);
+      return;
+    }
     waypoints.push(e.latlng);
     rebuildWaypoints();
   });
@@ -1113,6 +1252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const missingHint = document.getElementById('routeGenMissingHint');
 
     const togglePopover = () => {
+      if (isHudExpanded) setHudExpanded(false);
       const missing = getMissingSteps();
       const suggested = missing >= 300 ? missing : 3000;
       stepsInput.value = suggested;
@@ -1143,6 +1283,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
         : 'Metsa-, pargi- ja loodusrajad on lubatud';
       safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
+      syncHudExpandedInputs();
       updateFloatingShuffleLabel();
       saveState();
     });
@@ -1453,7 +1594,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // PUHAS ALUMINE HUD, TAIMER JA PÄRIS GPS-KÕNDIMINE
+  // ALUMINE HUD, TAIMER JA PÄRIS GPS-KÕNDIMINE
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -1495,7 +1636,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('liveCalories').textContent = state.today.calories;
     document.getElementById('liveDuration').textContent = formatDuration(state.today.durationSec);
 
-    syncDrawerStepInputs();
+    syncHudExpandedInputs();
   }
 
   const startWalkBtn = document.getElementById('startWalkBtn');
@@ -1506,6 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startWalkBtn.classList.toggle('walking-active', isWalking);
 
     if (isWalking) {
+      if (isHudExpanded) setHudExpanded(false);
       startWalkText.textContent = 'Peata ja salvesta kõnd';
       lastGpsLatLng = null;
 
@@ -1556,6 +1698,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
+    if (isHudExpanded) setHudExpanded(false);
     const popover = document.getElementById('routeGenPopover');
     const stepsInput = document.getElementById('targetRouteStepsInput');
     if (stepsInput) {
@@ -1652,7 +1795,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Alglaadimine
-  setupDrawerStepsControl();
+  setupExpandableHudDrawer();
   setupRouteGeneratorUI();
   renderProfile();
   checkAdminAccess();
