@@ -1,13 +1,18 @@
+/* ==========================================================================
+   GOWALK PRO — 4. 360° INTERACTIVE STEP DIAL PICKER & INLINE INPUT
+   ========================================================================== */
+
 import { LUCIDE_SVGS } from './config.js';
+import { state, saveState, getMissingSteps } from './state.js';
 
 const DIAL_RADIUS = 92;
 const DIAL_CIRCUMFERENCE = 2 * Math.PI * DIAL_RADIUS;
-let dialMode = 'walked';
+let dialMode = 'walked'; // 'walked' | 'goal'
 let tempWalkedSteps = 0;
 let tempGoalSteps = 10000;
 let isDraggingDial = false;
 
-export function setupStepDialModal(getState, onSave) {
+export function setupStepDialModal(onHudUpdate, onGenerateRoute) {
   const backdrop = document.createElement('div');
   backdrop.id = 'stepDialBackdrop';
   backdrop.className = 'step-dial-backdrop';
@@ -18,7 +23,9 @@ export function setupStepDialModal(getState, onSave) {
           <button type="button" class="dial-tab-btn active" data-dial-tab="walked">Täna tehtud</button>
           <button type="button" class="dial-tab-btn" data-dial-tab="goal">Päeva eesmärk</button>
         </div>
-        <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">${LUCIDE_SVGS.close}</button>
+        <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">
+          ${LUCIDE_SVGS.close}
+        </button>
       </div>
 
       <div class="dial-wheel-wrap" id="dialWheelWrap">
@@ -31,13 +38,23 @@ export function setupStepDialModal(getState, onSave) {
           </defs>
           <circle class="dial-track-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
           <circle class="dial-ticks-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
-          <circle id="dialProgressCircle" class="dial-progress-circle" cx="112" cy="112" r="${DIAL_RADIUS}" stroke-dasharray="${DIAL_CIRCUMFERENCE.toFixed(2)}" stroke-dashoffset="${DIAL_CIRCUMFERENCE.toFixed(2)}"></circle>
+          <circle id="dialProgressCircle" class="dial-progress-circle" cx="112" cy="112" r="${DIAL_RADIUS}"
+            stroke-dasharray="${DIAL_CIRCUMFERENCE.toFixed(2)}"
+            stroke-dashoffset="${DIAL_CIRCUMFERENCE.toFixed(2)}"></circle>
           <circle id="dialThumbHandle" class="dial-thumb-handle" cx="112" cy="20" r="11"></circle>
         </svg>
 
         <div class="dial-center-readout">
           <span class="dial-mode-caption" id="dialModeCaption">Täna tehtud</span>
-          <input type="text" inputmode="numeric" pattern="[0-9 ]*" id="dialBigValue" class="dial-big-input" value="0" />
+          <input
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9 ]*"
+            id="dialBigValue"
+            class="dial-big-input"
+            value="0"
+            aria-label="Sammude arv"
+          />
           <span class="dial-unit-sub" id="dialUnitSub">sammu • ~0.00 km</span>
           <div class="dial-missing-summary" id="dialMissingSummary">Puudu: 10 000 sammu</div>
         </div>
@@ -52,85 +69,282 @@ export function setupStepDialModal(getState, onSave) {
 
       <div class="dial-actions-col">
         <button type="button" id="dialSaveAndRouteBtn" class="btn-dial-primary-route"></button>
-        <button type="button" id="dialSaveOnlyBtn" class="btn-dial-secondary-save">Salvesta sammud</button>
+        <button type="button" id="dialSaveOnlyBtn" class="btn-dial-secondary-save">
+          Salvesta sammud
+        </button>
       </div>
     </div>
   `;
+
   document.body.appendChild(backdrop);
 
-  const openDial = (mode) => {
-    dialMode = mode;
-    const st = getState();
-    tempWalkedSteps = st.today.steps || 0;
-    tempGoalSteps = st.settings.stepGoal || 10000;
-    backdrop.querySelectorAll('.dial-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-dial-tab') === dialMode));
-    renderDial(st);
-    backdrop.classList.add('open');
-  };
+  const primaryLine = document.querySelector('.primary-step-line');
+  const stepRingContainer = document.querySelector('.step-ring-container');
 
-  const closeDial = () => backdrop.classList.remove('open');
+  if (primaryLine) {
+    let hintBadge = primaryLine.querySelector('.step-dial-trigger-hint');
+    if (!hintBadge) {
+      hintBadge = document.createElement('span');
+      hintBadge.id = 'hudMissingHintBadge';
+      hintBadge.className = 'step-dial-trigger-hint';
+      hintBadge.textContent = 'Muuda';
+      primaryLine.appendChild(hintBadge);
+    }
+    primaryLine.addEventListener('click', () => openStepDial('walked'));
+  }
 
-  document.querySelectorAll('.primary-step-line, .step-ring-container').forEach(el => {
-    el.addEventListener('click', () => openDial('walked'));
-  });
+  if (stepRingContainer) {
+    stepRingContainer.addEventListener('click', () => openStepDial('walked'));
+  }
+
+  const quickSyncBtn = document.getElementById('quickSyncBtn');
+  if (quickSyncBtn) {
+    quickSyncBtn.title = 'Ava sammuketas';
+    quickSyncBtn.addEventListener('click', () => openStepDial('walked'));
+  }
 
   backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       dialMode = btn.getAttribute('data-dial-tab');
       backdrop.querySelectorAll('.dial-tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      renderDial(getState());
+      renderDialPosition(true);
     });
   });
 
-  document.getElementById('closeStepDialBtn').addEventListener('click', closeDial);
-  backdrop.addEventListener('click', e => { if (e.target === backdrop) closeDial(); });
+  document.getElementById('closeStepDialBtn').addEventListener('click', closeStepDial);
+  backdrop.addEventListener('click', e => {
+    if (e.target === backdrop) closeStepDial();
+  });
 
   backdrop.querySelectorAll('.dial-step-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const delta = parseInt(btn.getAttribute('data-delta'), 10);
-      if (dialMode === 'walked') tempWalkedSteps = Math.max(0, tempWalkedSteps + delta);
-      else tempGoalSteps = Math.max(1000, tempGoalSteps + delta);
-      renderDial(getState());
+      if (dialMode === 'walked') {
+        tempWalkedSteps = Math.max(0, Math.min(100000, tempWalkedSteps + delta));
+      } else {
+        tempGoalSteps = Math.max(1000, Math.min(100000, tempGoalSteps + delta));
+      }
+      renderDialPosition(true);
     });
   });
 
-  const bigInput = document.getElementById('dialBigValue');
-  bigInput.addEventListener('input', () => {
-    const raw = bigInput.value.replace(/[^0-9]/g, '');
-    const val = raw === '' ? 0 : parseInt(raw, 10);
-    if (dialMode === 'walked') tempWalkedSteps = val;
-    else tempGoalSteps = Math.max(500, val);
-    renderDial(getState(), false);
+  // Otse ketta keskel muudetav sisestusväli (Inline Input ilma prompt() aknata)
+  const bigInputEl = document.getElementById('dialBigValue');
+
+  bigInputEl.addEventListener('focus', () => {
+    const currentVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
+    bigInputEl.value = String(currentVal);
+    setTimeout(() => bigInputEl.select(), 20);
   });
 
-  const saveValues = (shouldRoute = false) => {
-    const st = getState();
-    st.today.steps = tempWalkedSteps;
-    st.settings.stepGoal = tempGoalSteps;
-    const strideMeters = st.settings.strideCm / 100;
-    st.today.distanceKm = +(st.today.steps * strideMeters / 1000).toFixed(2);
-    st.today.calories = Math.round(st.today.steps * 0.04);
-    onSave(shouldRoute);
-    closeDial();
+  bigInputEl.addEventListener('input', () => {
+    const rawDigits = bigInputEl.value.replace(/[^0-9]/g, '');
+    const parsed = rawDigits === '' ? 0 : Math.min(100000, parseInt(rawDigits, 10));
+    if (dialMode === 'walked') {
+      tempWalkedSteps = Math.max(0, parsed);
+    } else {
+      tempGoalSteps = Math.max(500, parsed);
+    }
+    renderDialPosition(false);
+  });
+
+  bigInputEl.addEventListener('blur', () => {
+    if (dialMode === 'goal' && tempGoalSteps < 1000) {
+      tempGoalSteps = 1000;
+    }
+    renderDialPosition(true);
+  });
+
+  bigInputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      bigInputEl.blur();
+    }
+  });
+
+  // 360° radiaalne ketta pööramine
+  const wheelWrap = document.getElementById('dialWheelWrap');
+
+  const updateFromPointer = (clientX, clientY) => {
+    const rect = wheelWrap.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+
+    let deg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
+    if (deg < 0) deg += 360;
+    const fraction = Math.max(0, Math.min(1, deg / 360));
+
+    if (dialMode === 'walked') {
+      const maxWalkScale = Math.max(15000, tempGoalSteps);
+      tempWalkedSteps = Math.round((fraction * maxWalkScale) / 100) * 100;
+    } else {
+      const maxGoalScale = 30000;
+      const rawGoal = 1000 + fraction * (maxGoalScale - 1000);
+      tempGoalSteps = Math.round(rawGoal / 500) * 500;
+    }
+    renderDialPosition(true);
   };
 
-  document.getElementById('dialSaveOnlyBtn').addEventListener('click', () => saveValues(false));
-  document.getElementById('dialSaveAndRouteBtn').addEventListener('click', () => saveValues(true));
+  wheelWrap.addEventListener('mousedown', e => {
+    if (e.target === bigInputEl) return;
+    if (document.activeElement === bigInputEl) bigInputEl.blur();
+    isDraggingDial = true;
+    updateFromPointer(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!isDraggingDial) return;
+    updateFromPointer(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDraggingDial = false;
+  });
+
+  wheelWrap.addEventListener(
+    'touchstart',
+    e => {
+      if (e.target === bigInputEl) return;
+      if (document.activeElement === bigInputEl) bigInputEl.blur();
+      if (e.touches && e.touches[0]) {
+        isDraggingDial = true;
+        updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  wheelWrap.addEventListener(
+    'touchmove',
+    e => {
+      if (!isDraggingDial || !e.touches || !e.touches[0]) return;
+      updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
+    },
+    { passive: true }
+  );
+
+  wheelWrap.addEventListener(
+    'touchend',
+    () => {
+      isDraggingDial = false;
+    },
+    { passive: true }
+  );
+
+  const commitDialValues = () => {
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    state.today.steps = Math.max(0, tempWalkedSteps);
+    state.today.distanceKm = +((state.today.steps * strideMeters) / 1000).toFixed(2);
+    state.today.calories = Math.round(state.today.steps * 0.04);
+    state.settings.stepGoal = Math.max(1000, tempGoalSteps);
+
+    const settingStepGoalEl = document.getElementById('settingStepGoal');
+    if (settingStepGoalEl) settingStepGoalEl.value = state.settings.stepGoal;
+
+    saveState();
+    if (onHudUpdate) onHudUpdate();
+  };
+
+  document.getElementById('dialSaveOnlyBtn').addEventListener('click', () => {
+    commitDialValues();
+    closeStepDial();
+  });
+
+  document.getElementById('dialSaveAndRouteBtn').addEventListener('click', () => {
+    commitDialValues();
+    closeStepDial();
+    const missing = getMissingSteps();
+    const stepsToGenerate = missing >= 300 ? missing : 3000;
+    if (onGenerateRoute) onGenerateRoute(stepsToGenerate);
+  });
 }
 
-function renderDial(st, formatInput = true) {
+export function openStepDial(initialMode = 'walked') {
+  const backdrop = document.getElementById('stepDialBackdrop');
+  if (!backdrop) return;
+  dialMode = initialMode;
+  tempWalkedSteps = state.today.steps || 0;
+  tempGoalSteps = state.settings.stepGoal || 10000;
+
+  backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-dial-tab') === dialMode);
+  });
+
+  renderDialPosition(true);
+  backdrop.classList.add('open');
+}
+
+export function closeStepDial() {
+  const backdrop = document.getElementById('stepDialBackdrop');
+  const bigInputEl = document.getElementById('dialBigValue');
+  if (bigInputEl && document.activeElement === bigInputEl) {
+    bigInputEl.blur();
+  }
+  if (backdrop) backdrop.classList.remove('open');
+}
+
+function renderDialPosition(formatInputDisplay = true) {
+  const progressCircle = document.getElementById('dialProgressCircle');
+  const thumbHandle = document.getElementById('dialThumbHandle');
+  const captionEl = document.getElementById('dialModeCaption');
+  const bigInputEl = document.getElementById('dialBigValue');
+  const unitSubEl = document.getElementById('dialUnitSub');
+  const missingSummaryEl = document.getElementById('dialMissingSummary');
+  const routeBtnEl = document.getElementById('dialSaveAndRouteBtn');
+
+  const strideMeters = (state.settings.strideCm || 76) / 100;
   const activeVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
-  const maxRef = dialMode === 'walked' ? Math.max(15000, tempGoalSteps) : 30000;
-  const fraction = Math.max(0, Math.min(1, activeVal / maxRef));
-  
-  document.getElementById('dialProgressCircle').style.strokeDashoffset = (DIAL_CIRCUMFERENCE - fraction * DIAL_CIRCUMFERENCE).toFixed(2);
-  document.getElementById('dialModeCaption').textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
-  
-  const bigInput = document.getElementById('dialBigValue');
-  if (formatInput && document.activeElement !== bigInput) bigInput.value = activeVal.toLocaleString('et-EE');
+  const maxRef =
+    dialMode === 'walked'
+      ? Math.max(15000, tempGoalSteps, tempWalkedSteps)
+      : Math.max(30000, tempGoalSteps);
+  const minRef = dialMode === 'walked' ? 0 : 1000;
+
+  const fraction = Math.max(0, Math.min(1, (activeVal - minRef) / Math.max(1, maxRef - minRef)));
+  const offset = DIAL_CIRCUMFERENCE - fraction * DIAL_CIRCUMFERENCE;
+  if (progressCircle) {
+    progressCircle.style.strokeDashoffset = offset.toFixed(2);
+  }
+
+  const angleRad = (fraction * 360 - 90) * (Math.PI / 180);
+  const tx = 112 + DIAL_RADIUS * Math.cos(angleRad);
+  const ty = 112 + DIAL_RADIUS * Math.sin(angleRad);
+  if (thumbHandle) {
+    thumbHandle.setAttribute('cx', tx.toFixed(2));
+    thumbHandle.setAttribute('cy', ty.toFixed(2));
+  }
+
+  if (captionEl) {
+    captionEl.textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
+  }
+  if (bigInputEl && formatInputDisplay && document.activeElement !== bigInputEl) {
+    bigInputEl.value = activeVal.toLocaleString('et-EE');
+  }
+
+  const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
+  if (unitSubEl) {
+    unitSubEl.textContent = `sammu • ~${activeKm} km`;
+  }
 
   const missing = Math.max(0, tempGoalSteps - tempWalkedSteps);
-  document.getElementById('dialMissingSummary').textContent = missing > 0 ? `Puudu: ${missing.toLocaleString('et-EE')} sammu` : 'Eesmärk täidetud ✓';
-  document.getElementById('dialSaveAndRouteBtn').innerHTML = `${LUCIDE_SVGS.sparkles}<span>Salvesta & koosta ${missing > 0 ? missing : 3000} sammu ring</span>`;
+  const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
+
+  if (missingSummaryEl) {
+    if (missing > 0) {
+      missingSummaryEl.textContent = `Puudu: ${missing.toLocaleString('et-EE')} sammu (~${missingKm} km)`;
+    } else {
+      missingSummaryEl.textContent = 'Päeva eesmärk täidetud ✓';
+    }
+  }
+
+  if (routeBtnEl) {
+    const btnText =
+      missing > 0
+        ? `Salvesta & koosta ${missing.toLocaleString('et-EE')} sammu ring`
+        : 'Salvesta & koosta lisaring (3 000)';
+    routeBtnEl.innerHTML = `${LUCIDE_SVGS.sparkles}<span>${btnText}</span>`;
+  }
 }
