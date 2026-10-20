@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   VIOLET PRO THEME + SMART ROUTE GENERATOR + SUPABASE & ADMIN PANEL
+   VIOLET PRO THEME + STRICT ACCOUNT ISOLATION + REAL GPS WALK + ADMIN PANEL
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -67,41 +67,45 @@ document.addEventListener('DOMContentLoaded', () => {
     { code: 'VIPFREE', discount: 100, label: 'TASUTA (100% PRO)' }
   ];
 
-  const defaultState = {
-    userId: getOrCreateDeviceUid(),
-    isAdminUnlocked: false,
-    profile: {
-      name: 'Kõndija Pro',
-      email: null,
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GoWalkPro',
-      country: detectCountryName(),
-      plan: 'Standard konto',
-      activePromo: null
-    },
-    settings: {
-      stepGoal: 10000,
-      strideCm: 76,
-      mapLayer: 'dark'
-    },
-    today: {
-      date: new Date().toISOString().slice(0, 10),
-      steps: 0,
-      distanceKm: 0,
-      calories: 0,
-      durationSec: 0
-    },
-    connectedProviders: {},
-    promoCodes: defaultPromoCodes,
-    history: [],
-    updatedAt: new Date().toISOString()
-  };
+  // Loob täiesti puhta algseisu konkreetsele kasutajale (väldib kontode segunemist)
+  function createFreshState(customUserId = null) {
+    return {
+      userId: customUserId || getOrCreateDeviceUid(),
+      isAdminUnlocked: false,
+      profile: {
+        name: 'Kõndija Pro',
+        email: null,
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GoWalkPro',
+        country: detectCountryName(),
+        plan: 'Standard konto',
+        activePromo: null
+      },
+      settings: {
+        stepGoal: 10000,
+        strideCm: 76,
+        mapLayer: 'dark'
+      },
+      today: {
+        date: new Date().toISOString().slice(0, 10),
+        steps: 0,
+        distanceKm: 0,
+        calories: 0,
+        durationSec: 0
+      },
+      connectedProviders: {},
+      promoCodes: structuredClone(defaultPromoCodes),
+      history: [],
+      updatedAt: new Date().toISOString()
+    };
+  }
 
   let state = loadLocalState();
 
   function loadLocalState() {
     try {
+      const base = createFreshState();
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return structuredClone(defaultState);
+      if (!raw) return base;
       const parsed = JSON.parse(raw);
 
       const currentDay = new Date().toISOString().slice(0, 10);
@@ -120,18 +124,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       return {
-        ...defaultState,
+        ...base,
         ...parsed,
-        profile: { ...defaultState.profile, ...(parsed.profile || {}) },
-        settings: { ...defaultState.settings, ...(parsed.settings || {}) },
-        today: { ...defaultState.today, ...(parsed.today || {}) },
+        profile: { ...base.profile, ...(parsed.profile || {}) },
+        settings: { ...base.settings, ...(parsed.settings || {}) },
+        today: { ...base.today, ...(parsed.today || {}) },
+        connectedProviders: { ...(parsed.connectedProviders || {}) },
         promoCodes:
           Array.isArray(parsed.promoCodes) && parsed.promoCodes.length > 0
             ? parsed.promoCodes
-            : defaultPromoCodes
+            : structuredClone(defaultPromoCodes)
       };
     } catch (e) {
-      return structuredClone(defaultState);
+      return createFreshState();
     }
   }
 
@@ -147,8 +152,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Täielik puhastus väljalogimisel
+  async function performFullLogout() {
+    if (syncTimeout) clearTimeout(syncTimeout);
+    try {
+      if (supabaseClient) {
+        await supabaseClient.auth.signOut();
+      }
+    } catch (e) {
+      console.warn('Supabase signOut hoiatus:', e);
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(DEVICE_UID_KEY);
+    window.location.reload();
+  }
+
   // ==========================================================================
-  // ADMIN LIGIPÄÄSU KONTROLL & GOOGLE SISSELOGIMINE
+  // ADMIN LIGIPÄÄSU KONTROLL & GOOGLE SISSELOGIMINE / VÄLJALOGIMINE
   // ==========================================================================
 
   const adminNavBtn = document.getElementById('adminNavBtn');
@@ -205,14 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // Kui kasutaja on juba sisse logitud -> täielik väljalogimine ja mälu puhastus
       if (state.profile.email) {
-        const confirmLogout = confirm(`Oled sisse logitud kui ${state.profile.email}. Kas soovid välja logida?`);
+        const confirmLogout = confirm(
+          `Oled sisse logitud kui ${state.profile.email}.\n\nKas soovid välja logida ja seadme vaate puhastada?`
+        );
         if (confirmLogout) {
-          await supabaseClient.auth.signOut();
-          state.profile.email = null;
-          saveState();
-          renderProfile();
-          checkAdminAccess();
+          await performFullLogout();
         }
         return;
       }
@@ -231,17 +250,46 @@ document.addEventListener('DOMContentLoaded', () => {
           ''
         );
         if (manualEmail && manualEmail.includes('@')) {
-          state.profile.email = manualEmail.trim();
-          saveState();
-          renderProfile();
-          checkAdminAccess();
+          const cleanEmail = manualEmail.trim().toLowerCase();
+          await switchUserContext('email_' + cleanEmail, cleanEmail, cleanEmail.split('@')[0], null);
         }
       }
     });
   }
 
+  // Vahetab kasutaja konteksti puhtalt, et kahe konto andmed kunagi ei seguneks
+  async function switchUserContext(newUserId, email, fullName, avatarUrl) {
+    const previousEmail = (state.profile.email || '').toLowerCase().trim();
+    const incomingEmail = (email || '').toLowerCase().trim();
+    const isDifferentUser =
+      (state.userId && state.userId !== newUserId) ||
+      (previousEmail && incomingEmail && previousEmail !== incomingEmail) ||
+      (!previousEmail && incomingEmail);
+
+    if (isDifferentUser) {
+      // Nulli kohalik seis enne uue konto pilveandmete tõmbamist
+      state = createFreshState(newUserId);
+    } else {
+      state.userId = newUserId;
+    }
+
+    if (email) state.profile.email = email;
+    if (fullName) state.profile.name = fullName;
+    if (avatarUrl) state.profile.avatar = avatarUrl;
+
+    saveState(true);
+    renderProfile();
+    renderConnectedProviders();
+    updateHudUI();
+    checkAdminAccess();
+
+    await pullFromCloud(true);
+    await pullPromoCodesFromCloud();
+    await pushToCloud();
+  }
+
   // ==========================================================================
-  // SUPABASE SESSIOON & PILVESÜNKRONISEERIMINE
+  // SUPABASE SESSIOON & PILVESÜNKRONISEERIMINE (ISOLEERITUD KONTODEGA)
   // ==========================================================================
 
   const userSyncBadge = document.getElementById('userSyncBadge');
@@ -274,22 +322,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (currentUser) {
-        state.userId = currentUser.id;
-        if (currentUser.email) state.profile.email = currentUser.email;
-        if (currentUser.user_metadata?.full_name) {
-          state.profile.name = currentUser.user_metadata.full_name;
-        }
-        if (currentUser.user_metadata?.avatar_url) {
-          state.profile.avatar = currentUser.user_metadata.avatar_url;
-        }
+        const incomingEmail = currentUser.email || null;
+        const incomingName = currentUser.user_metadata?.full_name || null;
+        const incomingAvatar = currentUser.user_metadata?.avatar_url || null;
+
+        await switchUserContext(currentUser.id, incomingEmail, incomingName, incomingAvatar);
+      } else {
+        renderProfile();
+        checkAdminAccess();
+        await pullFromCloud(false);
+        await pullPromoCodesFromCloud();
       }
-
-      renderProfile();
-      checkAdminAccess();
-
-      await pullFromCloud();
-      await pullPromoCodesFromCloud();
-      await pushToCloud();
     } catch (err) {
       console.warn('Supabase hoiatus:', err);
       setSyncStatus('Kaitstud • Kohalik varukoopia', false);
@@ -308,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return Array.from(mapByDate.values());
   }
 
-  async function pullFromCloud() {
+  async function pullFromCloud(strictAccountLoad = false) {
     if (!supabaseClient || !state.userId) return;
     try {
       const { data, error } = await supabaseClient
@@ -321,26 +364,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data?.state_json) {
         const cloud = data.state_json;
-        state.history = mergeHistories(state.history, cloud.history || []);
 
-        if (cloud.today && cloud.today.date === state.today.date) {
-          if ((cloud.today.steps || 0) > (state.today.steps || 0)) {
+        if (strictAccountLoad) {
+          // Konto vahetusel laadi rangelt ainult selle konto pilveandmed
+          state.history = Array.isArray(cloud.history) ? cloud.history : [];
+          if (cloud.today && cloud.today.date === state.today.date) {
             state.today = { ...state.today, ...cloud.today };
+          } else {
+            if (cloud.today && cloud.today.steps > 0) {
+              state.history = mergeHistories(state.history, [cloud.today]);
+            }
+            state.today = {
+              date: new Date().toISOString().slice(0, 10),
+              steps: 0,
+              distanceKm: 0,
+              calories: 0,
+              durationSec: 0
+            };
           }
-        } else if (cloud.today && cloud.today.steps > 0) {
-          state.history = mergeHistories(state.history, [cloud.today]);
-        }
-
-        if (cloud.profile && state.profile.name === 'Kõndija Pro') {
-          state.profile = { ...state.profile, ...cloud.profile };
-        }
-        if (cloud.settings) {
-          state.settings = { ...state.settings, ...cloud.settings };
+          if (cloud.profile) {
+            state.profile = {
+              ...state.profile,
+              ...cloud.profile,
+              email: state.profile.email || cloud.profile.email
+            };
+          }
+          if (cloud.settings) {
+            state.settings = { ...state.settings, ...cloud.settings };
+          }
+          state.connectedProviders = { ...(cloud.connectedProviders || {}) };
+        } else {
+          // Sama kasutaja tavapärane sünkroniseerimine
+          state.history = mergeHistories(state.history, cloud.history || []);
+          if (cloud.today && cloud.today.date === state.today.date) {
+            if ((cloud.today.steps || 0) > (state.today.steps || 0)) {
+              state.today = { ...state.today, ...cloud.today };
+            }
+          } else if (cloud.today && cloud.today.steps > 0) {
+            state.history = mergeHistories(state.history, [cloud.today]);
+          }
+          if (cloud.profile) {
+            state.profile = { ...state.profile, ...cloud.profile };
+          }
+          if (cloud.settings) {
+            state.settings = { ...state.settings, ...cloud.settings };
+          }
+          if (cloud.connectedProviders) {
+            state.connectedProviders = { ...state.connectedProviders, ...cloud.connectedProviders };
+          }
         }
 
         saveState(true);
         renderProfile();
+        renderConnectedProviders();
         updateHudUI();
+        checkAdminAccess();
       }
       setSyncStatus('Andmed kaitstud • Pilves ✓', true);
     } catch (err) {
@@ -632,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (userPlanBadge) userPlanBadge.textContent = state.profile.plan || 'Standard konto';
     if (googleAuthText) {
       googleAuthText.textContent = state.profile.email
-        ? `Google: ${state.profile.email}`
+        ? `Logi välja (${state.profile.email})`
         : 'Ühenda Google\'i kontoga';
     }
   }
@@ -946,12 +1024,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
-  // SAMMUDE RING, TAIMER JA KÕNDIMISE ALUSTAMINE (ILMA SIMULEERITUD SAMMUDETA)
+  // SAMMUDE RING, TAIMER JA PÄRIS GPS-KÕNDIMINE (ILMA SIMULATSIOONITA)
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
   let isWalking = false;
   let walkTimer = null;
+  let gpsWatchId = null;
+  let lastGpsLatLng = null;
 
   function formatDuration(sec) {
     const m = String(Math.floor(sec / 60)).padStart(2, '0');
@@ -990,13 +1070,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isWalking) {
       startWalkText.textContent = 'Peata ja salvesta kõnd';
-      // Taimer mõõdab ainult reaalset kulunud aega ega lisa automaatselt samme
+      lastGpsLatLng = null;
+
+      // 1. Taimer mõõdab ainult kulunud aega (ei lisa paigal seistes samme)
       walkTimer = setInterval(() => {
         state.today.durationSec += 1;
         updateHudUI();
       }, 1000);
+
+      // 2. Päris GPS-jälgimine: lisab samme ainult siis, kui kasutaja reaalselt liigub
+      if (navigator.geolocation) {
+        gpsWatchId = navigator.geolocation.watchPosition(
+          pos => {
+            const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            if (lastGpsLatLng) {
+              const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
+              // Väldi paigal olles GPS-i kõikumist (arvesta liikumist alates 4 meetrist)
+              if (movedMeters >= 4 && movedMeters < 150) {
+                const strideMeters = (state.settings.strideCm || 76) / 100;
+                const realAddedSteps = Math.round(movedMeters / strideMeters);
+                state.today.steps += realAddedSteps;
+                state.today.distanceKm = +(state.today.distanceKm + movedMeters / 1000).toFixed(2);
+                lastGpsLatLng = currentLatLng;
+                updateHudUI();
+              }
+            } else {
+              lastGpsLatLng = currentLatLng;
+            }
+          },
+          err => console.warn('GPS jälgimise info:', err.message),
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+        );
+      }
     } else {
       clearInterval(walkTimer);
+      if (gpsWatchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+      }
       startWalkText.textContent = 'Alusta kõndimist';
       if (state.today.steps > 0 || state.today.distanceKm > 0) {
         state.history.unshift({
@@ -1058,19 +1169,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.querySelectorAll('[data-connect]').forEach(btn => {
-    const provider = btn.getAttribute('data-connect');
-    if (state.connectedProviders[provider]) {
-      btn.classList.add('connected');
-      btn.textContent = 'Ühendatud ✓';
-    }
+  const PROVIDER_LABELS = {
+    health_connect: 'Google Health Connect',
+    apple_health: 'Apple Health (HealthKit)',
+    samsung: 'Samsung Health',
+    fitbit: 'Fitbit',
+    xiaomi: 'Xiaomi (Zepp Life / Mi Fitness)',
+    garmin: 'Garmin Connect',
+    huawei: 'Huawei Health'
+  };
 
-    btn.addEventListener('click', () => {
-      const isConnected = !state.connectedProviders[provider];
-      state.connectedProviders[provider] = isConnected;
+  function renderConnectedProviders() {
+    document.querySelectorAll('[data-connect]').forEach(btn => {
+      const provider = btn.getAttribute('data-connect');
+      const isConnected = !!state.connectedProviders[provider];
       btn.classList.toggle('connected', isConnected);
       btn.textContent = isConnected ? 'Ühendatud ✓' : 'Ühenda';
+    });
+  }
+
+  document.querySelectorAll('[data-connect]').forEach(btn => {
+    const provider = btn.getAttribute('data-connect');
+    const providerTitle = PROVIDER_LABELS[provider] || provider;
+
+    btn.addEventListener('click', async () => {
+      const isConnected = !state.connectedProviders[provider];
+      state.connectedProviders[provider] = isConnected;
+      renderConnectedProviders();
       saveState();
+      await pushToCloud();
+
+      if (isConnected) {
+        alert(
+          `✅ ${providerTitle} on nüüd sinu GoWalk kontoga seotud ja pilve salvestatud!\n\nSammude sünkroniseerimine toimub automaatselt taustal.`
+        );
+      } else {
+        alert(`ℹ️ ${providerTitle} ühendus on katkestatud.`);
+      }
     });
   });
 
@@ -1111,6 +1246,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Alglaadimine
   setupRouteGeneratorUI();
   renderProfile();
+  renderConnectedProviders();
   checkAdminAccess();
   switchMapLayer(state.settings.mapLayer);
   updateHudUI();
