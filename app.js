@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   VIOLET PRO THEME + STRICT ACCOUNT ISOLATION + REAL GPS WALK + ADMIN PANEL
+   VIOLET PRO THEME + MULTI-DIRECTION ROUTE SHUFFLE + STRICT ACCOUNT ISOLATION
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -67,7 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
     { code: 'VIPFREE', discount: 100, label: 'TASUTA (100% PRO)' }
   ];
 
-  // Loob täiesti puhta algseisu konkreetsele kasutajale (väldib kontode segunemist)
   function createFreshState(customUserId = null) {
     return {
       userId: customUserId || getOrCreateDeviceUid(),
@@ -152,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Täielik puhastus väljalogimisel
   async function performFullLogout() {
     if (syncTimeout) clearTimeout(syncTimeout);
     try {
@@ -225,7 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Kui kasutaja on juba sisse logitud -> täielik väljalogimine ja mälu puhastus
       if (state.profile.email) {
         const confirmLogout = confirm(
           `Oled sisse logitud kui ${state.profile.email}.\n\nKas soovid välja logida ja seadme vaate puhastada?`
@@ -257,7 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Vahetab kasutaja konteksti puhtalt, et kahe konto andmed kunagi ei seguneks
   async function switchUserContext(newUserId, email, fullName, avatarUrl) {
     const previousEmail = (state.profile.email || '').toLowerCase().trim();
     const incomingEmail = (email || '').toLowerCase().trim();
@@ -267,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
       (!previousEmail && incomingEmail);
 
     if (isDifferentUser) {
-      // Nulli kohalik seis enne uue konto pilveandmete tõmbamist
       state = createFreshState(newUserId);
     } else {
       state.userId = newUserId;
@@ -366,7 +361,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cloud = data.state_json;
 
         if (strictAccountLoad) {
-          // Konto vahetusel laadi rangelt ainult selle konto pilveandmed
           state.history = Array.isArray(cloud.history) ? cloud.history : [];
           if (cloud.today && cloud.today.date === state.today.date) {
             state.today = { ...state.today, ...cloud.today };
@@ -394,7 +388,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           state.connectedProviders = { ...(cloud.connectedProviders || {}) };
         } else {
-          // Sama kasutaja tavapärane sünkroniseerimine
           state.history = mergeHistories(state.history, cloud.history || []);
           if (cloud.today && cloud.today.date === state.today.date) {
             if ((cloud.today.steps || 0) > (state.today.steps || 0)) {
@@ -732,7 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // TÄISEKRAANI KAART + AUTOMAATSE TRAJEKTOORI GENERAATOR
+  // TÄISEKRAANI KAART + MITMESUUNALINE TRAJEKTOORI GENERAATOR (SHUFFLE)
   // ==========================================================================
 
   const map = L.map('map', {
@@ -790,6 +783,18 @@ document.addEventListener('DOMContentLoaded', () => {
     opacity: 0.92
   }).addTo(map);
 
+  // Jälgime viimati genereeritud suunda ja mustrit, et iga "Shuffle" annaks täiesti uue raja
+  let lastGeneratedBearing = Math.random() * 2 * Math.PI;
+  let routeVariantCounter = 0;
+  let lastTargetSteps = state.settings.stepGoal || 8000;
+  let floatingShuffleBtn = null;
+
+  function setFloatingShuffleVisible(visible) {
+    if (floatingShuffleBtn) {
+      floatingShuffleBtn.classList.toggle('visible', visible);
+    }
+  }
+
   function createPinIcon(label, isStart = false) {
     const bg = isStart ? '#8b5cf6' : '#c084fc';
     return L.divIcon({
@@ -828,7 +833,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function rebuildWaypoints(customGeometry = null) {
+  function rebuildWaypoints(customGeometry = null, skipMetricRecalc = false) {
     markers.forEach(m => map.removeLayer(m));
     markers = [];
     routeLine.setLatLngs(customGeometry || waypoints);
@@ -849,7 +854,9 @@ document.addEventListener('DOMContentLoaded', () => {
       markers.push(marker);
     });
 
-    recalculateRouteMetrics();
+    if (!skipMetricRecalc) {
+      recalculateRouteMetrics();
+    }
   }
 
   map.on('click', e => {
@@ -861,6 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (waypoints.length > 0) {
       waypoints.pop();
       rebuildWaypoints();
+      if (waypoints.length <= 1) setFloatingShuffleVisible(false);
     }
   });
 
@@ -869,6 +877,7 @@ document.addEventListener('DOMContentLoaded', () => {
     routeLine.setLatLngs([]);
     markers.forEach(m => map.removeLayer(m));
     markers = [];
+    setFloatingShuffleVisible(false);
   });
 
   document.getElementById('locateMeBtn').addEventListener('click', () => {
@@ -887,7 +896,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR (RINGMARSRUUT SAMMUDE EESMÄRGI JÄRGI)
+  // NUTIKAS TRAJEKTOORI GENERAATOR KOOS "SHUFFLE / TEINE SUUND" FUNKTSIOONIGA
   // ==========================================================================
 
   function setupRouteGeneratorUI() {
@@ -901,6 +910,13 @@ document.addEventListener('DOMContentLoaded', () => {
     magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
     toolsBar.prepend(magicFab);
 
+    // Hõljuv Shuffle kiirnupp otse kaardil
+    floatingShuffleBtn = document.createElement('button');
+    floatingShuffleBtn.id = 'floatingShuffleBtn';
+    floatingShuffleBtn.className = 'floating-shuffle-pill';
+    floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
+    viewport.appendChild(floatingShuffleBtn);
+
     const popover = document.createElement('div');
     popover.id = 'routeGenPopover';
     popover.className = 'route-gen-popover';
@@ -913,7 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">✕</button>
       </div>
       <p class="route-gen-sub">
-        Vali soovitud sammude arv ja GoWalk joonistab sulle alguspunktist (Pin A) täpse ringtrajektoori:
+        Vali soovitud sammude arv ja GoWalk joonistab alguspunktist (Pin A) unikaalse ringtrajektoori:
       </p>
       <div class="route-preset-pills">
         <button class="preset-pill" data-steps="3000">3 000</button>
@@ -925,6 +941,9 @@ document.addEventListener('DOMContentLoaded', () => {
         <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${state.settings.stepGoal || 8000}" step="500" min="500" placeholder="Sammude arv..." />
         <button id="generateSmartRouteBtn" class="btn-generate-go">Genereeri rada</button>
       </div>
+      <button id="shuffleRoutePopoverBtn" class="btn-shuffle-route">
+        🔄 Teine suund (Shuffle)
+      </button>
     `;
     viewport.appendChild(popover);
 
@@ -937,12 +956,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const stepsInput = document.getElementById('targetRouteStepsInput');
+
     popover.querySelectorAll('.preset-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         popover.querySelectorAll('.preset-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         const val = parseInt(pill.getAttribute('data-steps'), 10);
         stepsInput.value = val;
+        lastTargetSteps = val;
         generateLoopRouteForSteps(val);
         popover.classList.remove('open');
       });
@@ -950,8 +971,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('generateSmartRouteBtn').addEventListener('click', () => {
       const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || state.settings.stepGoal);
+      lastTargetSteps = targetSteps;
       generateLoopRouteForSteps(targetSteps);
       popover.classList.remove('open');
+    });
+
+    // Hüpikkaardi sees olev "🔄 Teine suund (Shuffle)" nupp
+    document.getElementById('shuffleRoutePopoverBtn').addEventListener('click', () => {
+      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
+      lastTargetSteps = targetSteps;
+      generateLoopRouteForSteps(targetSteps);
+    });
+
+    // Kaardi peal hõljuv "🔄 Teine suund (Shuffle)" kiirnupp
+    floatingShuffleBtn.addEventListener('click', () => {
+      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
+      generateLoopRouteForSteps(targetSteps);
     });
   }
 
@@ -975,6 +1010,45 @@ document.addEventListener('DOMContentLoaded', () => {
     return L.latLng((lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI);
   }
 
+  // Loob erineva kujuga kontrollpunktid (kolmnurk, romb/kvartal või pikem paun)
+  function buildLoopControlPoints(startPoint, baseRadius, baseBearing, shapeType, turnSign) {
+    if (shapeType === 1) {
+      // 4 kontrollpunktiga laiem kvartaliring
+      const p1 = offsetCoordinate(startPoint, baseRadius * 0.95, baseBearing);
+      const p2 = offsetCoordinate(startPoint, baseRadius * 1.32, baseBearing + turnSign * (Math.PI / 3.2));
+      const p3 = offsetCoordinate(startPoint, baseRadius * 0.95, baseBearing + turnSign * (Math.PI / 1.6));
+      return [startPoint, p1, p2, p3];
+    } else if (shapeType === 2) {
+      // Pikem suunatud paun (läheb kaugemale ühes suunas ja tuleb teist tänavat pidi tagasi)
+      const p1 = offsetCoordinate(startPoint, baseRadius * 0.85, baseBearing - turnSign * 0.28);
+      const p2 = offsetCoordinate(startPoint, baseRadius * 1.48, baseBearing + turnSign * 0.18);
+      const p3 = offsetCoordinate(startPoint, baseRadius * 0.9, baseBearing + turnSign * 0.72);
+      return [startPoint, p1, p2, p3];
+    } else {
+      // Klassikaline asümmeetriline 3-punkti ring
+      const jitter = 0.92 + Math.random() * 0.24;
+      const p1 = offsetCoordinate(startPoint, baseRadius * 1.12 * jitter, baseBearing);
+      const p2 = offsetCoordinate(startPoint, baseRadius * 1.34, baseBearing + turnSign * (Math.PI / 2.3));
+      const p3 = offsetCoordinate(startPoint, baseRadius * 1.08, baseBearing + turnSign * (Math.PI / 1.15));
+      return [startPoint, p1, p2, p3];
+    }
+  }
+
+  async function fetchOsrmFootRoute(pointsList) {
+    const coordsQuery = [...pointsList, pointsList[0]]
+      .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
+      .join(';');
+
+    const res = await fetch(
+      `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
+    );
+    const data = await res.json();
+    if (data && data.routes && data.routes[0]) {
+      return data.routes[0];
+    }
+    return null;
+  }
+
   async function generateLoopRouteForSteps(targetSteps) {
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const targetMeters = targetSteps * strideMeters;
@@ -983,34 +1057,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingStepGoalEl = document.getElementById('settingStepGoal');
     if (settingStepGoalEl) settingStepGoalEl.value = targetSteps;
 
+    // Säilita alguspunkt (Pin A) või võta kaardi keskpunkt
     const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
-    const effectivePerimeter = targetMeters / 1.28;
-    const radiusMeters = effectivePerimeter / (2 * Math.PI);
 
-    const baseAngle = Math.random() * 2 * Math.PI;
-    const p1 = offsetCoordinate(startPoint, radiusMeters * 1.15, baseAngle);
-    const p2 = offsetCoordinate(startPoint, radiusMeters * 1.35, baseAngle + Math.PI / 2.2);
-    const p3 = offsetCoordinate(startPoint, radiusMeters * 1.15, baseAngle + Math.PI / 1.1);
+    // Keera suunda garanteeritult 105° kuni 175° võrra, et iga Shuffle läheks täiesti uude suunda
+    const angleShift = (Math.PI * 0.58) + Math.random() * (Math.PI * 0.39);
+    lastGeneratedBearing = (lastGeneratedBearing + angleShift) % (2 * Math.PI);
 
-    waypoints = [startPoint, p1, p2, p3];
+    routeVariantCounter += 1;
+    const shapeType = routeVariantCounter % 3;
+    const turnSign = routeVariantCounter % 2 === 0 ? 1 : -1;
+
+    const effectivePerimeter = targetMeters / 1.32;
+    let radiusMeters = effectivePerimeter / (2 * Math.PI);
+
+    if (floatingShuffleBtn) {
+      floatingShuffleBtn.innerHTML = '<span>⏳ Otsin uut rada...</span>';
+    }
+
+    waypoints = buildLoopControlPoints(
+      startPoint,
+      radiusMeters,
+      lastGeneratedBearing,
+      shapeType,
+      turnSign
+    );
 
     try {
-      const coordsQuery = [startPoint, p1, p2, p3, startPoint]
-        .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
-        .join(';');
+      let route = await fetchOsrmFootRoute(waypoints);
 
-      const res = await fetch(
-        `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
-      );
-      const data = await res.json();
+      // Kui tänavavõrgu tegelik pikkus erineb sihist üle 18%, korrigeeri raadiust automaatselt
+      if (route && route.distance > 100) {
+        const ratio = targetMeters / route.distance;
+        if (ratio < 0.82 || ratio > 1.18) {
+          const clampedRatio = Math.max(0.55, Math.min(1.75, ratio));
+          radiusMeters = radiusMeters * clampedRatio;
+          waypoints = buildLoopControlPoints(
+            startPoint,
+            radiusMeters,
+            lastGeneratedBearing,
+            shapeType,
+            turnSign
+          );
+          const refinedRoute = await fetchOsrmFootRoute(waypoints);
+          if (refinedRoute) route = refinedRoute;
+        }
+      }
 
-      if (data && data.routes && data.routes[0]) {
-        const route = data.routes[0];
+      if (route) {
         const latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
-
-        rebuildWaypoints(latlngs);
+        rebuildWaypoints(latlngs, true);
         applyRouteDistanceMeters(targetMeters);
-        map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+        map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
+        setFloatingShuffleVisible(true);
+        if (floatingShuffleBtn) {
+          floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
+        }
         return;
       }
     } catch (err) {
@@ -1018,9 +1120,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     waypoints.push(startPoint);
-    rebuildWaypoints();
+    rebuildWaypoints(null, true);
     applyRouteDistanceMeters(targetMeters);
-    map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+    map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
+    setFloatingShuffleVisible(true);
+    if (floatingShuffleBtn) {
+      floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
+    }
   }
 
   // ==========================================================================
@@ -1072,20 +1178,17 @@ document.addEventListener('DOMContentLoaded', () => {
       startWalkText.textContent = 'Peata ja salvesta kõnd';
       lastGpsLatLng = null;
 
-      // 1. Taimer mõõdab ainult kulunud aega (ei lisa paigal seistes samme)
       walkTimer = setInterval(() => {
         state.today.durationSec += 1;
         updateHudUI();
       }, 1000);
 
-      // 2. Päris GPS-jälgimine: lisab samme ainult siis, kui kasutaja reaalselt liigub
       if (navigator.geolocation) {
         gpsWatchId = navigator.geolocation.watchPosition(
           pos => {
             const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
             if (lastGpsLatLng) {
               const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
-              // Väldi paigal olles GPS-i kõikumist (arvesta liikumist alates 4 meetrist)
               if (movedMeters >= 4 && movedMeters < 150) {
                 const strideMeters = (state.settings.strideCm || 76) / 100;
                 const realAddedSteps = Math.round(movedMeters / strideMeters);
