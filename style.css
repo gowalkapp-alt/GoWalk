@@ -55,7 +55,7 @@ html, body {
 .ring-percent,
 .mini-metric span,
 .stat-value,
-.dial-big-value {
+.dial-big-input {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
@@ -65,6 +65,37 @@ html, body {
 .nav-item[data-target="syncModal"],
 #quickAddStepsBtn {
   display: none !important;
+}
+
+/* Ühtsed Lucide'i SVG jooneikoonid nuppude sees */
+.gw-inline-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  flex-shrink: 0;
+}
+
+.gw-inline-icon.sm {
+  width: 14px;
+  height: 14px;
+}
+
+.gw-inline-icon.lg {
+  width: 18px;
+  height: 18px;
+}
+
+.gw-spin {
+  animation: gwSpin 0.9s linear infinite;
+}
+
+@keyframes gwSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* ==========================================================================
@@ -336,8 +367,16 @@ html, body {
   color: #ffffff;
 }
 
-.route-gen-title span.spark {
+.route-gen-title .spark-icon-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(192, 132, 252, 0.35);
   color: var(--accent-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .route-gen-sub {
@@ -363,10 +402,10 @@ html, body {
 }
 
 .safe-route-toggle.active {
-  background: rgba(245, 158, 11, 0.14);
-  border-color: rgba(251, 191, 36, 0.65);
-  color: #fef3c7;
-  box-shadow: 0 4px 18px rgba(245, 158, 11, 0.2);
+  background: rgba(139, 92, 246, 0.16);
+  border-color: var(--accent-secondary);
+  color: #f3e8ff;
+  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.22);
 }
 
 .safe-toggle-left {
@@ -376,10 +415,23 @@ html, body {
   min-width: 0;
 }
 
-.safe-toggle-icon {
-  font-size: 18px;
-  line-height: 1;
+.safe-toggle-icon-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(192, 132, 252, 0.32);
+  color: var(--accent-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.safe-route-toggle.active .safe-toggle-icon-box {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: #ffffff;
+  border-color: var(--accent-secondary);
 }
 
 .safe-toggle-text {
@@ -402,7 +454,7 @@ html, body {
 }
 
 .safe-route-toggle.active .safe-toggle-sub {
-  color: #fde68a;
+  color: #e9d5ff;
 }
 
 .safe-toggle-pill {
@@ -411,14 +463,14 @@ html, body {
   font-family: var(--font-display);
   font-size: 10px;
   font-weight: 800;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
 .safe-route-toggle.active .safe-toggle-pill {
-  background: #f59e0b;
-  color: #080711;
+  background: var(--accent-primary);
+  color: #ffffff;
 }
 
 .route-preset-pills {
@@ -505,16 +557,16 @@ html, body {
   background: rgba(139, 92, 246, 0.3);
 }
 
-/* Hõljuv kiirnupp kaardil, kui rada on aktiivne */
+/* Hõljuv kiirnupp kaardil puhta Lucide'i ikooniga */
 .floating-shuffle-pill {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   bottom: 198px;
   z-index: 15;
-  padding: 9px 16px;
+  padding: 8px 14px;
   border-radius: var(--radius-pill);
-  background: rgba(17, 14, 32, 0.92);
+  background: rgba(17, 14, 32, 0.94);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--accent-secondary);
@@ -524,11 +576,11 @@ html, body {
   font-weight: 800;
   display: none;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 18px var(--accent-glow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 18px var(--accent-glow);
   white-space: nowrap;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.2s ease;
 }
 
 .floating-shuffle-pill.visible {
@@ -536,7 +588,28 @@ html, body {
 }
 
 .floating-shuffle-pill:active {
-  transform: translateX(-50%) scale(0.94);
+  transform: translateX(-50%) scale(0.95);
+}
+
+.shuffle-mode-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(139, 92, 246, 0.22);
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  color: var(--accent-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shuffle-action-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #e9d5ff;
+  padding-left: 6px;
+  border-left: 1px solid rgba(192, 132, 252, 0.25);
 }
 
 /* ==========================================================================
@@ -747,7 +820,7 @@ html, body {
 }
 
 /* ==========================================================================
-   INTERAKTIIVNE SAMMUKETAS (360° CIRCULAR DIAL PICKER MODAL)
+   INTERAKTIIVNE SAMMUKETAS (360° CIRCULAR DIAL PICKER + INLINE INPUT)
    ========================================================================== */
 
 .step-dial-backdrop {
@@ -827,8 +900,8 @@ html, body {
 
 .dial-wheel-wrap {
   position: relative;
-  width: 224px;
-  height: 224px;
+  width: 228px;
+  height: 228px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -879,7 +952,7 @@ html, body {
 
 .dial-center-readout {
   position: absolute;
-  inset: 32px;
+  inset: 28px;
   border-radius: 50%;
   display: flex;
   flex-direction: column;
@@ -895,30 +968,43 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
-.dial-big-value {
-  font-size: 34px;
+/* Otse ketta keskel muudetav sammunumber (Inline Input) */
+.dial-big-input {
+  width: 138px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #ffffff;
-  line-height: 1.05;
+  line-height: 1.1;
+  text-align: center;
+  padding: 2px 6px;
   pointer-events: auto;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 10px;
-  transition: background 0.15s ease;
+  cursor: text;
+  outline: none;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.dial-big-value:hover {
-  background: rgba(139, 92, 246, 0.16);
+.dial-big-input:hover {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(192, 132, 252, 0.28);
+}
+
+.dial-big-input:focus {
+  background: rgba(8, 7, 17, 0.85);
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .dial-unit-sub {
   font-size: 11px;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
 .dial-missing-summary {
