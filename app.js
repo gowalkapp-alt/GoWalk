@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   VIOLET PRO THEME + MULTI-DIRECTION ROUTE SHUFFLE + STRICT ACCOUNT ISOLATION
+   VIOLET PRO THEME + SAFE LIT STREETS MODE + TRUE CIRCULAR LOOP + ISOLATION
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -82,7 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
       settings: {
         stepGoal: 10000,
         strideCm: 76,
-        mapLayer: 'dark'
+        mapLayer: 'dark',
+        safeLitOnly: true
       },
       today: {
         date: new Date().toISOString().slice(0, 10),
@@ -725,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // TÄISEKRAANI KAART + MITMESUUNALINE TRAJEKTOORI GENERAATOR (SHUFFLE)
+  // TÄISEKRAANI KAART + OHUTU/VALGUSTATUD RINGTRAJEKTOORI GENERAATOR
   // ==========================================================================
 
   const map = L.map('map', {
@@ -783,14 +784,21 @@ document.addEventListener('DOMContentLoaded', () => {
     opacity: 0.92
   }).addTo(map);
 
-  // Jälgime viimati genereeritud suunda ja mustrit, et iga "Shuffle" annaks täiesti uue raja
   let lastGeneratedBearing = Math.random() * 2 * Math.PI;
   let routeVariantCounter = 0;
   let lastTargetSteps = state.settings.stepGoal || 8000;
   let floatingShuffleBtn = null;
+  let cachedSafeNodes = { key: '', nodes: [] };
+
+  function updateFloatingShuffleLabel() {
+    if (!floatingShuffleBtn) return;
+    const prefix = state.settings.safeLitOnly !== false ? '🔦 Ohutu • ' : '🌲 Kõik rajad • ';
+    floatingShuffleBtn.innerHTML = `<span>${prefix}🔄 Teine suund (Shuffle)</span>`;
+  }
 
   function setFloatingShuffleVisible(visible) {
     if (floatingShuffleBtn) {
+      updateFloatingShuffleLabel();
       floatingShuffleBtn.classList.toggle('visible', visible);
     }
   }
@@ -896,7 +904,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR KOOS "SHUFFLE / TEINE SUUND" FUNKTSIOONIGA
+  // NUTIKAS TRAJEKTOORI GENERAATOR:
+  // 1) "🔦 Ainult valgustatud tänavad / Ohutu ring" (väldib metsaradu)
+  // 2) Päris ümara ringi matemaatika (keskpunkt nihutatud, 90° sammud)
+  // 3) Tupikute ja maantee tagasipöörete eemaldamine
   // ==========================================================================
 
   function setupRouteGeneratorUI() {
@@ -910,12 +921,13 @@ document.addEventListener('DOMContentLoaded', () => {
     magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
     toolsBar.prepend(magicFab);
 
-    // Hõljuv Shuffle kiirnupp otse kaardil
     floatingShuffleBtn = document.createElement('button');
     floatingShuffleBtn.id = 'floatingShuffleBtn';
     floatingShuffleBtn.className = 'floating-shuffle-pill';
-    floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
+    updateFloatingShuffleLabel();
     viewport.appendChild(floatingShuffleBtn);
+
+    const isSafeDefault = state.settings.safeLitOnly !== false;
 
     const popover = document.createElement('div');
     popover.id = 'routeGenPopover';
@@ -929,8 +941,22 @@ document.addEventListener('DOMContentLoaded', () => {
         <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">✕</button>
       </div>
       <p class="route-gen-sub">
-        Vali soovitud sammude arv ja GoWalk joonistab alguspunktist (Pin A) unikaalse ringtrajektoori:
+        Vali sammude arv ja GoWalk joonistab alguspunktist (Pin A) puhta ringtrajektoori:
       </p>
+
+      <button type="button" id="safeLitRouteToggleBtn" class="safe-route-toggle ${isSafeDefault ? 'active' : ''}">
+        <div class="safe-toggle-left">
+          <span class="safe-toggle-icon" id="safeToggleEmoji">${isSafeDefault ? '🔦' : '🌲'}</span>
+          <div class="safe-toggle-text">
+            <span class="safe-toggle-title">Ainult valgustatud tänavad / Ohutu ring</span>
+            <span class="safe-toggle-sub" id="safeToggleSubtext">
+              ${isSafeDefault ? 'Väldib pimedaid metsaradu, eelistab tänavaid' : 'Metsa-, pargi- ja loodusrajad on lubatud'}
+            </span>
+          </div>
+        </div>
+        <span class="safe-toggle-pill" id="safeToggleBadge">${isSafeDefault ? 'SEES' : 'VÄLJAS'}</span>
+      </button>
+
       <div class="route-preset-pills">
         <button class="preset-pill" data-steps="3000">3 000</button>
         <button class="preset-pill" data-steps="5000">5 000</button>
@@ -955,6 +981,25 @@ document.addEventListener('DOMContentLoaded', () => {
       popover.classList.remove('open');
     });
 
+    // Valgustatud / Ohutu raja lüliti loogika
+    const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
+    const safeToggleEmoji = document.getElementById('safeToggleEmoji');
+    const safeToggleSubtext = document.getElementById('safeToggleSubtext');
+    const safeToggleBadge = document.getElementById('safeToggleBadge');
+
+    safeToggleBtn.addEventListener('click', () => {
+      state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
+      const active = state.settings.safeLitOnly;
+      safeToggleBtn.classList.toggle('active', active);
+      safeToggleEmoji.textContent = active ? '🔦' : '🌲';
+      safeToggleSubtext.textContent = active
+        ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
+        : 'Metsa-, pargi- ja loodusrajad on lubatud';
+      safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
+      updateFloatingShuffleLabel();
+      saveState();
+    });
+
     const stepsInput = document.getElementById('targetRouteStepsInput');
 
     popover.querySelectorAll('.preset-pill').forEach(pill => {
@@ -976,14 +1021,12 @@ document.addEventListener('DOMContentLoaded', () => {
       popover.classList.remove('open');
     });
 
-    // Hüpikkaardi sees olev "🔄 Teine suund (Shuffle)" nupp
     document.getElementById('shuffleRoutePopoverBtn').addEventListener('click', () => {
       const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
       lastTargetSteps = targetSteps;
       generateLoopRouteForSteps(targetSteps);
     });
 
-    // Kaardi peal hõljuv "🔄 Teine suund (Shuffle)" kiirnupp
     floatingShuffleBtn.addEventListener('click', () => {
       const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
       generateLoopRouteForSteps(targetSteps);
@@ -1010,41 +1053,179 @@ document.addEventListener('DOMContentLoaded', () => {
     return L.latLng((lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI);
   }
 
-  // Loob erineva kujuga kontrollpunktid (kolmnurk, romb/kvartal või pikem paun)
-  function buildLoopControlPoints(startPoint, baseRadius, baseBearing, shapeType, turnSign) {
-    if (shapeType === 1) {
-      // 4 kontrollpunktiga laiem kvartaliring
-      const p1 = offsetCoordinate(startPoint, baseRadius * 0.95, baseBearing);
-      const p2 = offsetCoordinate(startPoint, baseRadius * 1.32, baseBearing + turnSign * (Math.PI / 3.2));
-      const p3 = offsetCoordinate(startPoint, baseRadius * 0.95, baseBearing + turnSign * (Math.PI / 1.6));
-      return [startPoint, p1, p2, p3];
-    } else if (shapeType === 2) {
-      // Pikem suunatud paun (läheb kaugemale ühes suunas ja tuleb teist tänavat pidi tagasi)
-      const p1 = offsetCoordinate(startPoint, baseRadius * 0.85, baseBearing - turnSign * 0.28);
-      const p2 = offsetCoordinate(startPoint, baseRadius * 1.48, baseBearing + turnSign * 0.18);
-      const p3 = offsetCoordinate(startPoint, baseRadius * 0.9, baseBearing + turnSign * 0.72);
-      return [startPoint, p1, p2, p3];
-    } else {
-      // Klassikaline asümmeetriline 3-punkti ring
-      const jitter = 0.92 + Math.random() * 0.24;
-      const p1 = offsetCoordinate(startPoint, baseRadius * 1.12 * jitter, baseBearing);
-      const p2 = offsetCoordinate(startPoint, baseRadius * 1.34, baseBearing + turnSign * (Math.PI / 2.3));
-      const p3 = offsetCoordinate(startPoint, baseRadius * 1.08, baseBearing + turnSign * (Math.PI / 1.15));
-      return [startPoint, p1, p2, p3];
+  // Otsib OpenStreetMapist päris valgustatud tänavate ja asulasiseste teede punktid (välistab metsarajad)
+  async function fetchSafeLitStreetNodes(startPoint, searchRadiusMeters) {
+    const radius = Math.min(3500, Math.max(600, Math.round(searchRadiusMeters * 2.2)));
+    const cacheKey = `${startPoint.lat.toFixed(3)}_${startPoint.lng.toFixed(3)}_${radius}`;
+    if (cachedSafeNodes.key === cacheKey && cachedSafeNodes.nodes.length > 10) {
+      return cachedSafeNodes.nodes;
+    }
+
+    const query = `
+      [out:json][timeout:3];
+      (
+        way(around:${radius},${startPoint.lat},${startPoint.lng})["lit"="yes"]["highway"!~"motorway|trunk|track|path|bridleway|steps|construction"];
+        way(around:${radius},${startPoint.lat},${startPoint.lng})["highway"~"residential|living_street|pedestrian|tertiary|secondary"]["lit"!="no"];
+      );
+      out geom;
+    `;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2600);
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+
+      const nodes = [];
+      if (data && Array.isArray(data.elements)) {
+        data.elements.forEach(el => {
+          const isLit = el.tags?.lit === 'yes';
+          if (Array.isArray(el.geometry)) {
+            // Võta iga 3. tänavapunkt, et hoida nimekiri kiire ja ühtlane
+            for (let i = 0; i < el.geometry.length; i += 3) {
+              const pt = el.geometry[i];
+              if (pt && pt.lat && pt.lon) {
+                nodes.push({ lat: pt.lat, lng: pt.lon, lit: isLit });
+              }
+            }
+          }
+        });
+      }
+
+      if (nodes.length > 0) {
+        cachedSafeNodes = { key: cacheKey, nodes };
+      }
+      return nodes;
+    } catch (e) {
+      return [];
     }
   }
 
-  async function fetchOsrmFootRoute(pointsList) {
+  // Haarab kontrollpunkti lähima valgustatud / asulasisese tänava peale, et vältida metsa ja maanteid
+  function snapPointToSafeStreet(idealLatLng, safeNodes, maxSnapDistMeters) {
+    if (!safeNodes || safeNodes.length === 0) return idealLatLng;
+    let bestNode = null;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < safeNodes.length; i++) {
+      const n = safeNodes[i];
+      const candidate = L.latLng(n.lat, n.lng);
+      const dist = map.distance(idealLatLng, candidate);
+      if (dist <= maxSnapDistMeters) {
+        // Eelistame otseselt valgustatud (lit=yes) tänavaid
+        const score = n.lit ? dist * 0.72 : dist;
+        if (score < bestScore) {
+          bestScore = score;
+          bestNode = candidate;
+        }
+      }
+    }
+    return bestNode || idealLatLng;
+  }
+
+  // Ehitab PÄRIS RINGI, mis algab ja lõpeb punktis A:
+  // Ringi keskpunkt O on nihutatud punktist A eemale raadiuse R võrra.
+  // Punktid A, 1, 2, 3 asuvad 90° sammudega ümber ringi keskpunkti O.
+  function buildTrueCircularWaypoints(
+    startPoint,
+    loopRadiusMeters,
+    centerBearingRad,
+    turnSign,
+    aspectRatio = 1.0,
+    safeNodes = []
+  ) {
+    // 1. Nihuta ringi keskpunkt O alguspunktist A suunas centerBearingRad
+    const loopCenter = offsetCoordinate(startPoint, loopRadiusMeters, centerBearingRad);
+
+    // 2. Alguspunkt A asub keskpunktist O vaadatuna nurga (centerBearingRad + PI) all
+    const angleA = centerBearingRad + Math.PI;
+
+    // 3. Paiguta kontrollpunktid 1, 2, 3 täpselt 90°, 180° ja 270° peale ümber keskpunkti O
+    const angle1 = angleA + turnSign * (Math.PI * 0.5);
+    const angle2 = angleA + turnSign * Math.PI;
+    const angle3 = angleA + turnSign * (Math.PI * 1.5);
+
+    let p1 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle1);
+    let p2 = offsetCoordinate(loopCenter, loopRadiusMeters * 1.08, angle2);
+    let p3 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle3);
+
+    // 4. Kui "Ainult valgustatud tänavad" on aktiivne, haagi punktid 1, 2, 3 lähimatele valgustatud tänavatele
+    if (safeNodes && safeNodes.length > 0) {
+      const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
+      p1 = snapPointToSafeStreet(p1, safeNodes, snapLimit);
+      p2 = snapPointToSafeStreet(p2, safeNodes, snapLimit);
+      p3 = snapPointToSafeStreet(p3, safeNodes, snapLimit);
+    }
+
+    return [startPoint, p1, p2, p3];
+  }
+
+  // Eemaldab marsruudi geomeetriast edasi-tagasi tupikud / maantee tagasipöörded (spurs)
+  function removeDeadEndSpurs(latlngs) {
+    if (!Array.isArray(latlngs) || latlngs.length < 8) return latlngs;
+    let pts = latlngs.slice();
+
+    for (let pass = 0; pass < 3; pass++) {
+      let cleaned = [];
+      let i = 0;
+      while (i < pts.length) {
+        let jumpIndex = -1;
+        // Vaata ettepoole, kas rada naaseb peaaegu samasse punkti (kitsas edasi-tagasi oga)
+        const maxLookAhead = Math.min(pts.length - 1, i + 45);
+        for (let j = maxLookAhead; j >= i + 3; j--) {
+          // Ära lõika maha tervet suurt ringi ennast (alguse ja lõpu kokkusaamist)
+          if (i < 5 && j > pts.length - 6) continue;
+          const distBetween = map.distance(pts[i], pts[j]);
+          if (distBetween < 18) {
+            jumpIndex = j;
+            break;
+          }
+        }
+        cleaned.push(pts[i]);
+        if (jumpIndex !== -1) {
+          i = jumpIndex + 1;
+        } else {
+          i += 1;
+        }
+      }
+      pts = cleaned;
+    }
+    return pts;
+  }
+
+  // Pärib jalakäijasõbraliku marsruudi (eelistab OpenStreetMap Germany jalakäija/tänavate serverit)
+  async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
     const coordsQuery = [...pointsList, pointsList[0]]
       .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
       .join(';');
 
-    const res = await fetch(
-      `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
-    );
-    const data = await res.json();
-    if (data && data.routes && data.routes[0]) {
-      return data.routes[0];
+    // Kui Ohutu/Valgustatud režiim on sees, kasuta tänavavõrgu jalgratta/kergliiklustee ruuterit (väldib metsaradu),
+    // vastasel juhul jalakäijate metsa- ja pargiradade ruuterit.
+    const endpoints = safeLitOnly
+      ? [
+          `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
+          `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
+          `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
+        ]
+      : [
+          `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
+          `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
+        ];
+
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data && data.routes && data.routes[0]) {
+          return data.routes[0];
+        }
+      } catch (e) {}
     }
     return null;
   }
@@ -1052,71 +1233,87 @@ document.addEventListener('DOMContentLoaded', () => {
   async function generateLoopRouteForSteps(targetSteps) {
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const targetMeters = targetSteps * strideMeters;
+    const safeLitOnly = state.settings.safeLitOnly !== false;
 
     state.settings.stepGoal = targetSteps;
     const settingStepGoalEl = document.getElementById('settingStepGoal');
     if (settingStepGoalEl) settingStepGoalEl.value = targetSteps;
 
-    // Säilita alguspunkt (Pin A) või võta kaardi keskpunkt
     const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
 
-    // Keera suunda garanteeritult 105° kuni 175° võrra, et iga Shuffle läheks täiesti uude suunda
-    const angleShift = (Math.PI * 0.58) + Math.random() * (Math.PI * 0.39);
+    // Keera iga Shuffle vajutusega ringi suunda 95°–165° võrra uude ilmakaarde
+    const angleShift = Math.PI * 0.53 + Math.random() * (Math.PI * 0.38);
     lastGeneratedBearing = (lastGeneratedBearing + angleShift) % (2 * Math.PI);
 
     routeVariantCounter += 1;
-    const shapeType = routeVariantCounter % 3;
     const turnSign = routeVariantCounter % 2 === 0 ? 1 : -1;
+    const aspectRatios = [0.95, 0.82, 1.12];
+    const aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
 
-    const effectivePerimeter = targetMeters / 1.32;
-    let radiusMeters = effectivePerimeter / (2 * Math.PI);
+    // Ringi ümbermõõt tänavavõrgus on ~8.0 * loopRadius (sest 2*PI*R * 1.28 tänavakõverus ≈ 8.0*R)
+    let loopRadiusMeters = Math.max(120, targetMeters / 8.0);
 
     if (floatingShuffleBtn) {
-      floatingShuffleBtn.innerHTML = '<span>⏳ Otsin uut rada...</span>';
+      floatingShuffleBtn.innerHTML = '<span>⏳ Otsin ohutut ringrada...</span>';
     }
 
-    waypoints = buildLoopControlPoints(
+    // Kui kasutaja soovib ainult valgustatud/ohutuid tänavaid, lae OSM-ist valgustatud tänavate punktid
+    const safeNodes = safeLitOnly
+      ? await fetchSafeLitStreetNodes(startPoint, loopRadiusMeters)
+      : [];
+
+    waypoints = buildTrueCircularWaypoints(
       startPoint,
-      radiusMeters,
+      loopRadiusMeters,
       lastGeneratedBearing,
-      shapeType,
-      turnSign
+      turnSign,
+      aspectRatio,
+      safeNodes
     );
 
     try {
-      let route = await fetchOsrmFootRoute(waypoints);
+      let route = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
 
-      // Kui tänavavõrgu tegelik pikkus erineb sihist üle 18%, korrigeeri raadiust automaatselt
+      // Kui tänavavõrgu tegelik pikkus erineb sihist üle 18%, skaleeri ringi raadiust täpseks
       if (route && route.distance > 100) {
         const ratio = targetMeters / route.distance;
         if (ratio < 0.82 || ratio > 1.18) {
-          const clampedRatio = Math.max(0.55, Math.min(1.75, ratio));
-          radiusMeters = radiusMeters * clampedRatio;
-          waypoints = buildLoopControlPoints(
+          const clampedRatio = Math.max(0.55, Math.min(1.65, ratio));
+          loopRadiusMeters = loopRadiusMeters * clampedRatio;
+          waypoints = buildTrueCircularWaypoints(
             startPoint,
-            radiusMeters,
+            loopRadiusMeters,
             lastGeneratedBearing,
-            shapeType,
-            turnSign
+            turnSign,
+            aspectRatio,
+            safeNodes
           );
-          const refinedRoute = await fetchOsrmFootRoute(waypoints);
+          const refinedRoute = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
           if (refinedRoute) route = refinedRoute;
         }
       }
 
       if (route) {
-        const latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+        let latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+        // Eemalda võimalikud tupiktänavate edasi-tagasi ogad, et rada oleks puhas ring
+        latlngs = removeDeadEndSpurs(latlngs);
+
+        // Paiguta markerid 1, 2, 3 täpselt puhastatud ringi 25%, 50% ja 75% peale
+        if (latlngs.length >= 12) {
+          const q1 = latlngs[Math.floor(latlngs.length * 0.25)];
+          const q2 = latlngs[Math.floor(latlngs.length * 0.5)];
+          const q3 = latlngs[Math.floor(latlngs.length * 0.75)];
+          waypoints = [startPoint, q1, q2, q3];
+        }
+
         rebuildWaypoints(latlngs, true);
         applyRouteDistanceMeters(targetMeters);
         map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
         setFloatingShuffleVisible(true);
-        if (floatingShuffleBtn) {
-          floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
-        }
         return;
       }
     } catch (err) {
-      console.warn('OSRM marsruudi varurežiim:', err);
+      console.warn('Marsruudi varurežiim:', err);
     }
 
     waypoints.push(startPoint);
@@ -1124,9 +1321,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyRouteDistanceMeters(targetMeters);
     map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
     setFloatingShuffleVisible(true);
-    if (floatingShuffleBtn) {
-      floatingShuffleBtn.innerHTML = '<span>🔄 Teine suund (Shuffle)</span>';
-    }
   }
 
   // ==========================================================================
