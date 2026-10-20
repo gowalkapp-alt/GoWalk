@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   CLEAN PRO HUD + 360° INTERACTIVE STEP DIAL PICKER + SAFE LIT CIRCULAR LOOP
+   CLEAN PRO HUD + INLINE EDITABLE 360° STEP DIAL + LUCIDE SVG ICONS
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -14,6 +14,16 @@ const ADMIN_EMAILS = [
 let supabaseClient = null;
 let currentUser = null;
 let syncTimeout = null;
+
+// Puhtad Lucide'i vektoriikoonid (välistab emojid ja tagab ühtse Pro välimuse)
+const LUCIDE_SVGS = {
+  sparkles: `<svg class="gw-inline-icon" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>`,
+  flashlight: `<svg class="gw-inline-icon" viewBox="0 0 24 24"><path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><line x1="6" x2="18" y1="6" y2="6"/><line x1="12" x2="12" y1="12" y2="12.01"/></svg>`,
+  trees: `<svg class="gw-inline-icon" viewBox="0 0 24 24"><path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/></svg>`,
+  refreshCw: `<svg class="gw-inline-icon sm" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
+  loader: `<svg class="gw-inline-icon sm gw-spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`,
+  close: `<svg class="gw-inline-icon" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
+};
 
 function ensureSupabaseSDK() {
   if (window.supabase && typeof window.supabase.createClient === 'function') {
@@ -30,7 +40,7 @@ function ensureSupabaseSDK() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Eemalda kellaühenduste vaade ja alumise HUD-i "+" nupp, et vaade oleks 100% puhas
+  // Eemalda kellaühenduste vaade ja alumise HUD-i "+" nupp
   const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
   if (syncNavBtn) syncNavBtn.remove();
   const syncModalEl = document.getElementById('syncModal');
@@ -228,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         checkAdminAccess();
         alert(
           state.isAdminUnlocked
-            ? '🛡️ Admin Paneel on nüüd menüüs avatud!'
+            ? 'Admin Paneel on nüüd menüüs avatud!'
             : 'Admin Paneel peidetud.'
         );
       }
@@ -734,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // INTERAKTIIVNE SAMMUKETAS (360° DIAL PICKER) SAMMUDELE VAJUTADES
+  // INTERAKTIIVNE SAMMUKETAS (360° DIAL PICKER + INLINE INPUT OTSE KESKEL)
   // ==========================================================================
 
   const DIAL_RADIUS = 92;
@@ -755,7 +765,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <button type="button" class="dial-tab-btn active" data-dial-tab="walked">Täna tehtud</button>
             <button type="button" class="dial-tab-btn" data-dial-tab="goal">Päeva eesmärk</button>
           </div>
-          <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">✕</button>
+          <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">
+            ${LUCIDE_SVGS.close}
+          </button>
         </div>
 
         <div class="dial-wheel-wrap" id="dialWheelWrap">
@@ -776,8 +788,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <div class="dial-center-readout">
             <span class="dial-mode-caption" id="dialModeCaption">Täna tehtud</span>
-            <div class="dial-big-value" id="dialBigValue" title="Puuduta täpse arvu sisestamiseks">0</div>
-            <span class="dial-unit-sub" id="dialUnitSub">sammu • 0.00 km</span>
+            <input
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9 ]*"
+              id="dialBigValue"
+              class="dial-big-input"
+              value="0"
+              aria-label="Sammude arv"
+            />
+            <span class="dial-unit-sub" id="dialUnitSub">sammu • ~0.00 km</span>
             <div class="dial-missing-summary" id="dialMissingSummary">Puudu: 10 000 sammu</div>
           </div>
         </div>
@@ -790,9 +810,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
 
         <div class="dial-actions-col">
-          <button type="button" id="dialSaveAndRouteBtn" class="btn-dial-primary-route">
-            ✨ Salvesta & koosta puuduv ring
-          </button>
+          <button type="button" id="dialSaveAndRouteBtn" class="btn-dial-primary-route"></button>
           <button type="button" id="dialSaveOnlyBtn" class="btn-dial-secondary-save">
             Salvesta sammud
           </button>
@@ -802,7 +820,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.body.appendChild(backdrop);
 
-    // Ava ketas, kui kasutaja vajutab alumisel HUD-il sammudele, eesmärgile või protsendirõngale
     const primaryLine = document.querySelector('.primary-step-line');
     const stepRingContainer = document.querySelector('.step-ring-container');
 
@@ -822,7 +839,6 @@ document.addEventListener('DOMContentLoaded', () => {
       stepRingContainer.addEventListener('click', () => openStepDial('walked'));
     }
 
-    // Ülemine parempoolne nupp avab samuti sammuketta
     const quickSyncBtn = document.getElementById('quickSyncBtn');
     if (quickSyncBtn) {
       quickSyncBtn.title = 'Ava sammuketas';
@@ -835,11 +851,10 @@ document.addEventListener('DOMContentLoaded', () => {
         dialMode = btn.getAttribute('data-dial-tab');
         backdrop.querySelectorAll('.dial-tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        renderDialPosition();
+        renderDialPosition(true);
       });
     });
 
-    // Sulgemine
     document.getElementById('closeStepDialBtn').addEventListener('click', closeStepDial);
     backdrop.addEventListener('click', e => {
       if (e.target === backdrop) closeStepDial();
@@ -850,33 +865,49 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.addEventListener('click', () => {
         const delta = parseInt(btn.getAttribute('data-delta'), 10);
         if (dialMode === 'walked') {
-          tempWalkedSteps = Math.max(0, tempWalkedSteps + delta);
+          tempWalkedSteps = Math.max(0, Math.min(100000, tempWalkedSteps + delta));
         } else {
-          tempGoalSteps = Math.max(1000, tempGoalSteps + delta);
+          tempGoalSteps = Math.max(1000, Math.min(100000, tempGoalSteps + delta));
         }
-        renderDialPosition();
+        renderDialPosition(true);
       });
     });
 
-    // Keskmisele suurele numbrile vajutades saab ka klaviatuurilt täpse väärtuse trükkida
-    document.getElementById('dialBigValue').addEventListener('click', () => {
+    // Otse ketta keskel muudetav sisestusväli (Inline Input ilma prompt() aknata)
+    const bigInputEl = document.getElementById('dialBigValue');
+
+    bigInputEl.addEventListener('focus', () => {
       const currentVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
-      const label =
-        dialMode === 'walked'
-          ? 'Sisesta täpne täna tehtud sammude arv:'
-          : 'Sisesta päeva sammude eesmärk:';
-      const entered = prompt(label, currentVal);
-      if (entered === null) return;
-      const parsed = Math.max(0, parseInt(entered.replace(/\s+/g, ''), 10) || 0);
-      if (dialMode === 'walked') {
-        tempWalkedSteps = parsed;
-      } else {
-        tempGoalSteps = Math.max(1000, parsed);
-      }
-      renderDialPosition();
+      bigInputEl.value = String(currentVal);
+      setTimeout(() => bigInputEl.select(), 20);
     });
 
-    // Ketta sõrmega / hiirega pööramine (360° radiaalne liikumine)
+    bigInputEl.addEventListener('input', () => {
+      const rawDigits = bigInputEl.value.replace(/[^0-9]/g, '');
+      const parsed = rawDigits === '' ? 0 : Math.min(100000, parseInt(rawDigits, 10));
+      if (dialMode === 'walked') {
+        tempWalkedSteps = Math.max(0, parsed);
+      } else {
+        tempGoalSteps = Math.max(500, parsed);
+      }
+      renderDialPosition(false);
+    });
+
+    bigInputEl.addEventListener('blur', () => {
+      if (dialMode === 'goal' && tempGoalSteps < 1000) {
+        tempGoalSteps = 1000;
+      }
+      renderDialPosition(true);
+    });
+
+    bigInputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        bigInputEl.blur();
+      }
+    });
+
+    // Ketta sõrmega / hiirega pööramine (360° radiaalne liikumine, toetab suuri väärtusi)
     const wheelWrap = document.getElementById('dialWheelWrap');
 
     const updateFromPointer = (clientX, clientY) => {
@@ -891,18 +922,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const fraction = Math.max(0, Math.min(1, deg / 360));
 
       if (dialMode === 'walked') {
-        const maxScale = Math.max(1000, tempGoalSteps);
-        tempWalkedSteps = Math.round((fraction * maxScale) / 100) * 100;
+        const maxWalkScale = Math.max(15000, tempGoalSteps);
+        tempWalkedSteps = Math.round((fraction * maxWalkScale) / 100) * 100;
       } else {
-        const maxGoalScale = 25000;
+        const maxGoalScale = 30000;
         const rawGoal = 1000 + fraction * (maxGoalScale - 1000);
         tempGoalSteps = Math.round(rawGoal / 500) * 500;
       }
-      renderDialPosition();
+      renderDialPosition(true);
     };
 
     wheelWrap.addEventListener('mousedown', e => {
-      if (e.target.id === 'dialBigValue') return;
+      if (e.target === bigInputEl) return;
+      if (document.activeElement === bigInputEl) bigInputEl.blur();
       isDraggingDial = true;
       updateFromPointer(e.clientX, e.clientY);
     });
@@ -919,7 +951,8 @@ document.addEventListener('DOMContentLoaded', () => {
     wheelWrap.addEventListener(
       'touchstart',
       e => {
-        if (e.target.id === 'dialBigValue') return;
+        if (e.target === bigInputEl) return;
+        if (document.activeElement === bigInputEl) bigInputEl.blur();
         if (e.touches && e.touches[0]) {
           isDraggingDial = true;
           updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
@@ -945,7 +978,6 @@ document.addEventListener('DOMContentLoaded', () => {
       { passive: true }
     );
 
-    // Salvestamise nupud
     const commitDialValues = () => {
       const strideMeters = (state.settings.strideCm || 76) / 100;
       state.today.steps = Math.max(0, tempWalkedSteps);
@@ -985,30 +1017,37 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.toggle('active', btn.getAttribute('data-dial-tab') === dialMode);
     });
 
-    renderDialPosition();
+    renderDialPosition(true);
     backdrop.classList.add('open');
   }
 
   function closeStepDial() {
     const backdrop = document.getElementById('stepDialBackdrop');
+    const bigInputEl = document.getElementById('dialBigValue');
+    if (bigInputEl && document.activeElement === bigInputEl) {
+      bigInputEl.blur();
+    }
     if (backdrop) backdrop.classList.remove('open');
   }
 
-  function renderDialPosition() {
+  function renderDialPosition(formatInputDisplay = true) {
     const progressCircle = document.getElementById('dialProgressCircle');
     const thumbHandle = document.getElementById('dialThumbHandle');
     const captionEl = document.getElementById('dialModeCaption');
-    const bigValEl = document.getElementById('dialBigValue');
+    const bigInputEl = document.getElementById('dialBigValue');
     const unitSubEl = document.getElementById('dialUnitSub');
     const missingSummaryEl = document.getElementById('dialMissingSummary');
     const routeBtnEl = document.getElementById('dialSaveAndRouteBtn');
 
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const activeVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
-    const maxRef = dialMode === 'walked' ? Math.max(1000, tempGoalSteps) : 25000;
+    const maxRef =
+      dialMode === 'walked'
+        ? Math.max(15000, tempGoalSteps, tempWalkedSteps)
+        : Math.max(30000, tempGoalSteps);
     const minRef = dialMode === 'walked' ? 0 : 1000;
 
-    const fraction = Math.max(0, Math.min(1, (activeVal - minRef) / (maxRef - minRef)));
+    const fraction = Math.max(0, Math.min(1, (activeVal - minRef) / Math.max(1, maxRef - minRef)));
     const offset = DIAL_CIRCUMFERENCE - fraction * DIAL_CIRCUMFERENCE;
     if (progressCircle) {
       progressCircle.style.strokeDashoffset = offset.toFixed(2);
@@ -1025,8 +1064,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (captionEl) {
       captionEl.textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
     }
-    if (bigValEl) {
-      bigValEl.textContent = activeVal.toLocaleString('et-EE');
+    if (bigInputEl && formatInputDisplay && document.activeElement !== bigInputEl) {
+      bigInputEl.value = activeVal.toLocaleString('et-EE');
     }
 
     const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
@@ -1041,15 +1080,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (missing > 0) {
         missingSummaryEl.textContent = `Puudu: ${missing.toLocaleString('et-EE')} sammu (~${missingKm} km)`;
       } else {
-        missingSummaryEl.textContent = '🎉 Päeva eesmärk täidetud!';
+        missingSummaryEl.textContent = 'Päeva eesmärk täidetud ✓';
       }
     }
 
     if (routeBtnEl) {
-      routeBtnEl.textContent =
+      const btnText =
         missing > 0
-          ? `✨ Salvesta & koosta ${missing.toLocaleString('et-EE')} sammu ring`
-          : '✨ Salvesta & koosta lisaring (3 000)';
+          ? `Salvesta & koosta ${missing.toLocaleString('et-EE')} sammu ring`
+          : 'Salvesta & koosta lisaring (3 000)';
+      routeBtnEl.innerHTML = `${LUCIDE_SVGS.sparkles}<span>${btnText}</span>`;
     }
   }
 
@@ -1118,14 +1158,24 @@ document.addEventListener('DOMContentLoaded', () => {
   let floatingShuffleBtn = null;
   let cachedSafeNodes = { key: '', nodes: [] };
 
+  // Uuendab kaardil hõljuvat "Teine suund" nuppu puhaste Lucide'i SVG ikoonidega
   function updateFloatingShuffleLabel() {
     if (!floatingShuffleBtn) return;
-    const prefix = state.settings.safeLitOnly !== false ? '🔦' : '🌲';
-    const routeInfo =
+    const isSafe = state.settings.safeLitOnly !== false;
+    const modeSvg = isSafe ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
+    const routeText =
       plannedRoute.steps > 0
-        ? `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km) • `
-        : '';
-    floatingShuffleBtn.innerHTML = `<span>${prefix} ${routeInfo}🔄 Teine suund</span>`;
+        ? `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`
+        : 'Valitud rada';
+
+    floatingShuffleBtn.innerHTML = `
+      <span class="shuffle-mode-icon">${modeSvg}</span>
+      <span>${routeText}</span>
+      <span class="shuffle-action-tag">
+        ${LUCIDE_SVGS.refreshCw}
+        <span>Teine suund</span>
+      </span>
+    `;
   }
 
   function setFloatingShuffleVisible(visible) {
@@ -1242,7 +1292,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR (PAREMAL TÖÖRIISTARIBAL ✨)
+  // NUTIKAS TRAJEKTOORI GENERAATOR (PUHASTE LUCIDE'I SVG IKOONIDEGA)
   // ==========================================================================
 
   function setupRouteGeneratorUI() {
@@ -1271,10 +1321,12 @@ document.addEventListener('DOMContentLoaded', () => {
     popover.innerHTML = `
       <div class="route-gen-header">
         <div class="route-gen-title">
-          <span class="spark">✨</span>
+          <span class="spark-icon-wrap">${LUCIDE_SVGS.sparkles}</span>
           <span>Automaatne Trajektoori Generaator</span>
         </div>
-        <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">✕</button>
+        <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">
+          ${LUCIDE_SVGS.close}
+        </button>
       </div>
       <p class="route-gen-sub" id="routeGenMissingHint">
         Vali sammude arv ja GoWalk joonistab alguspunktist (Pin A) puhta ringtrajektoori:
@@ -1282,7 +1334,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       <button type="button" id="safeLitRouteToggleBtn" class="safe-route-toggle ${isSafeDefault ? 'active' : ''}">
         <div class="safe-toggle-left">
-          <span class="safe-toggle-icon" id="safeToggleEmoji">${isSafeDefault ? '🔦' : '🌲'}</span>
+          <span class="safe-toggle-icon-box" id="safeToggleIconBox">
+            ${isSafeDefault ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees}
+          </span>
           <div class="safe-toggle-text">
             <span class="safe-toggle-title">Ainult valgustatud tänavad / Ohutu ring</span>
             <span class="safe-toggle-sub" id="safeToggleSubtext">
@@ -1297,14 +1351,15 @@ document.addEventListener('DOMContentLoaded', () => {
         <button class="preset-pill active" data-steps="missing">Puuduvad</button>
         <button class="preset-pill" data-steps="3000">3 000</button>
         <button class="preset-pill" data-steps="5000">5 000</button>
-        <button class="preset-pill" data-steps="8000">8 000</button>
+        <button class="preset-pill" data-steps="10000">10 000</button>
       </div>
       <div class="route-custom-row">
         <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${initialMissing}" step="500" min="300" placeholder="Sammude arv..." />
         <button id="generateSmartRouteBtn" class="btn-generate-go">Genereeri rada</button>
       </div>
       <button id="shuffleRoutePopoverBtn" class="btn-shuffle-route">
-        🔄 Teine suund (Shuffle)
+        ${LUCIDE_SVGS.refreshCw}
+        <span>Teine suund (Shuffle)</span>
       </button>
     `;
     viewport.appendChild(popover);
@@ -1332,7 +1387,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
-    const safeToggleEmoji = document.getElementById('safeToggleEmoji');
+    const safeToggleIconBox = document.getElementById('safeToggleIconBox');
     const safeToggleSubtext = document.getElementById('safeToggleSubtext');
     const safeToggleBadge = document.getElementById('safeToggleBadge');
 
@@ -1340,7 +1395,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
       const active = state.settings.safeLitOnly;
       safeToggleBtn.classList.toggle('active', active);
-      safeToggleEmoji.textContent = active ? '🔦' : '🌲';
+      safeToggleIconBox.innerHTML = active ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
       safeToggleSubtext.textContent = active
         ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
         : 'Metsa-, pargi- ja loodusrajad on lubatud';
@@ -1589,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (floatingShuffleBtn) {
       floatingShuffleBtn.classList.add('visible');
-      floatingShuffleBtn.innerHTML = '<span>⏳ Otsin ohutut ringrada...</span>';
+      floatingShuffleBtn.innerHTML = `${LUCIDE_SVGS.loader}<span>Otsin ohutut ringrada...</span>`;
     }
 
     const safeNodes = safeLitOnly
