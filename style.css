@@ -274,7 +274,7 @@ html, body {
 }
 
 /* ==========================================================================
-   AUTOMAATSE TRAJEKTOORI GENERAATORI HÜPIKKAART
+   AUTOMAATSE TRAJEKTOORI GENERAATORI HÜPIKKAART & HÕLJUV SHUFFLE NUPP
    ========================================================================== */
 
 .route-gen-popover {
@@ -384,7 +384,7 @@ html, body {
 }
 
 .btn-generate-go {
-  padding: 0 18px;
+  padding: 0 16px;
   height: 42px;
   border: none;
   border-radius: 12px;
@@ -395,6 +395,64 @@ html, body {
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 4px 16px var(--accent-glow);
+  white-space: nowrap;
+}
+
+.btn-shuffle-route {
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  background: rgba(139, 92, 246, 0.16);
+  color: #e9d5ff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.btn-shuffle-route:active {
+  transform: scale(0.97);
+  background: rgba(139, 92, 246, 0.3);
+}
+
+/* Hõljuv kiirnupp kaardil, kui rada on aktiivne */
+.floating-shuffle-pill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 198px;
+  z-index: 15;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  background: rgba(17, 14, 32, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--accent-secondary);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 800;
+  display: none;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 18px var(--accent-glow);
+  white-space: nowrap;
+  transition: transform 0.15s ease;
+}
+
+.floating-shuffle-pill.visible {
+  display: inline-flex;
+}
+
+.floating-shuffle-pill:active {
+  transform: translateX(-50%) scale(0.94);
 }
 
 /* ==========================================================================
@@ -976,7 +1034,9 @@ html, body {
   padding: 12px 14px;
   border-radius: var(--radius-md);
   background: rgba(139, 92, 246, 0.14);
-  border: 1px solid rgba(192, 132, 252, 0.3);
+  border-color: rgba(192, 132, 252, 0.3);
+  border-style: solid;
+  border-width: 1px;
   font-size: 12px;
   color: #e9d5ff;
 }
