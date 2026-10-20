@@ -1,6 +1,6 @@
 /* ==========================================================================
    GOWALK PRO — APPLICATION LOGIC
-   VIOLET PRO THEME + SAFE LIT STREETS MODE + TRUE CIRCULAR LOOP + ISOLATION
+   MISSING STEPS HOME FOCUS + SAFE LIT LOOP GENERATOR + STRICT ISOLATION
    ========================================================================== */
 
 // 1. SUPABASE & ADMIN SEADISTUS
@@ -30,6 +30,12 @@ function ensureSupabaseSDK() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Eemalda kohe kella/tootjate sünkroniseerimise menüüpunkt ja modaal
+  const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
+  if (syncNavBtn) syncNavBtn.remove();
+  const syncModalEl = document.getElementById('syncModal');
+  if (syncModalEl) syncModalEl.remove();
+
   if (window.lucide) {
     lucide.createIcons();
   }
@@ -92,12 +98,17 @@ document.addEventListener('DOMContentLoaded', () => {
         calories: 0,
         durationSec: 0
       },
-      connectedProviders: {},
       promoCodes: structuredClone(defaultPromoCodes),
       history: [],
       updatedAt: new Date().toISOString()
     };
   }
+
+  // Planeeritud raja info (ei kirjuta üle kasutaja tegelikke tänaseid samme!)
+  let plannedRoute = {
+    steps: 0,
+    distanceKm: 0
+  };
 
   let state = loadLocalState();
 
@@ -129,7 +140,6 @@ document.addEventListener('DOMContentLoaded', () => {
         profile: { ...base.profile, ...(parsed.profile || {}) },
         settings: { ...base.settings, ...(parsed.settings || {}) },
         today: { ...base.today, ...(parsed.today || {}) },
-        connectedProviders: { ...(parsed.connectedProviders || {}) },
         promoCodes:
           Array.isArray(parsed.promoCodes) && parsed.promoCodes.length > 0
             ? parsed.promoCodes
@@ -150,6 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!skipCloud) {
       scheduleCloudSync();
     }
+  }
+
+  // Tagastab mitu sammu on tänasest eesmärgist puudu
+  function getMissingSteps() {
+    const goal = Math.max(1000, state.settings.stepGoal || 10000);
+    const walked = Math.max(0, state.today.steps || 0);
+    return Math.max(0, goal - walked);
   }
 
   async function performFullLogout() {
@@ -265,6 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isDifferentUser) {
       state = createFreshState(newUserId);
+      plannedRoute = { steps: 0, distanceKm: 0 };
     } else {
       state.userId = newUserId;
     }
@@ -275,7 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveState(true);
     renderProfile();
-    renderConnectedProviders();
     updateHudUI();
     checkAdminAccess();
 
@@ -387,7 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (cloud.settings) {
             state.settings = { ...state.settings, ...cloud.settings };
           }
-          state.connectedProviders = { ...(cloud.connectedProviders || {}) };
         } else {
           state.history = mergeHistories(state.history, cloud.history || []);
           if (cloud.today && cloud.today.date === state.today.date) {
@@ -403,14 +419,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (cloud.settings) {
             state.settings = { ...state.settings, ...cloud.settings };
           }
-          if (cloud.connectedProviders) {
-            state.connectedProviders = { ...state.connectedProviders, ...cloud.connectedProviders };
-          }
         }
 
         saveState(true);
         renderProfile();
-        renderConnectedProviders();
         updateHudUI();
         checkAdminAccess();
       }
@@ -685,10 +697,55 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('quickSyncBtn').addEventListener('click', () => {
-    pushToCloud();
-    document.getElementById('syncModal').classList.add('open');
-  });
+  // Ülemine parem nupp: kiire päeva eesmärgi või tehtud sammude muutmine
+  const quickSyncBtn = document.getElementById('quickSyncBtn');
+  if (quickSyncBtn) {
+    quickSyncBtn.title = 'Muuda päeva sammueesmärki';
+    quickSyncBtn.innerHTML = '<i data-lucide="target"></i>';
+    if (window.lucide) lucide.createIcons();
+    quickSyncBtn.addEventListener('click', promptEditStepGoal);
+  }
+
+  function promptEditCurrentSteps() {
+    const entered = prompt(
+      `Kui palju samme oled täna juba teinud (nt telefoni või kella järgi)?\n\nSinu päeva eesmärk on ${state.settings.stepGoal.toLocaleString('et-EE')} sammu.\nGoWalk arvutab kohe välja, mitu sammu on sul veel täna puudu:`,
+      state.today.steps
+    );
+    if (entered === null) return;
+    const parsed = Math.max(0, parseInt(entered.replace(/\s+/g, ''), 10) || 0);
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    state.today.steps = parsed;
+    state.today.distanceKm = +((parsed * strideMeters) / 1000).toFixed(2);
+    state.today.calories = Math.round(parsed * 0.04);
+    saveState();
+    updateHudUI();
+  }
+
+  function promptEditStepGoal() {
+    const entered = prompt(
+      'Sisesta oma tänane sammude eesmärk (nt 8000 või 10000):',
+      state.settings.stepGoal || 10000
+    );
+    if (entered === null) return;
+    const parsed = Math.max(1000, parseInt(entered.replace(/\s+/g, ''), 10) || 10000);
+    state.settings.stepGoal = parsed;
+    const settingStepGoalEl = document.getElementById('settingStepGoal');
+    if (settingStepGoalEl) settingStepGoalEl.value = parsed;
+    saveState();
+    updateHudUI();
+  }
+
+  // Lubame ka otse suurele sammunumbrile ja eesmärgile vajutades neid muuta
+  const liveStepsEl = document.getElementById('liveSteps');
+  if (liveStepsEl) {
+    liveStepsEl.title = 'Puuduta, et sisestada tänased tehtud sammud';
+    liveStepsEl.addEventListener('click', promptEditCurrentSteps);
+  }
+  const goalStepsLabelEl = document.querySelector('.steps-goal-label');
+  if (goalStepsLabelEl) {
+    goalStepsLabelEl.title = 'Puuduta, et muuta päeva eesmärki';
+    goalStepsLabelEl.addEventListener('click', promptEditStepGoal);
+  }
 
   // ==========================================================================
   // KASUTAJAPROFIILI MUUTMINE
@@ -726,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // TÄISEKRAANI KAART + OHUTU/VALGUSTATUD RINGTRAJEKTOORI GENERAATOR
+  // TÄISEKRAANI KAART + PUUDUVATE SAMMUDE RINGI GENERAATOR
   // ==========================================================================
 
   const map = L.map('map', {
@@ -786,14 +843,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let lastGeneratedBearing = Math.random() * 2 * Math.PI;
   let routeVariantCounter = 0;
-  let lastTargetSteps = state.settings.stepGoal || 8000;
+  let lastTargetSteps = 0;
   let floatingShuffleBtn = null;
   let cachedSafeNodes = { key: '', nodes: [] };
 
   function updateFloatingShuffleLabel() {
     if (!floatingShuffleBtn) return;
-    const prefix = state.settings.safeLitOnly !== false ? '🔦 Ohutu • ' : '🌲 Kõik rajad • ';
-    floatingShuffleBtn.innerHTML = `<span>${prefix}🔄 Teine suund (Shuffle)</span>`;
+    const prefix = state.settings.safeLitOnly !== false ? '🔦' : '🌲';
+    const routeInfo =
+      plannedRoute.steps > 0
+        ? `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km) • `
+        : '';
+    floatingShuffleBtn.innerHTML = `<span>${prefix} ${routeInfo}🔄 Teine suund</span>`;
   }
 
   function setFloatingShuffleVisible(visible) {
@@ -818,15 +879,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function applyRouteDistanceMeters(totalMeters) {
+  // Salvestab planeeritud raja pikkuse ilma kasutaja tänaseid tehtud samme 100% peale kirjutamata
+  function setPlannedRouteMetrics(totalMeters) {
     const routeKm = totalMeters / 1000;
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const routeSteps = Math.round(totalMeters / strideMeters);
 
-    state.today.distanceKm = +routeKm.toFixed(2);
-    state.today.steps = routeSteps;
-    state.today.calories = Math.round(routeSteps * 0.04);
-    saveState();
+    plannedRoute.steps = routeSteps;
+    plannedRoute.distanceKm = +routeKm.toFixed(2);
+    updateFloatingShuffleLabel();
     updateHudUI();
   }
 
@@ -837,7 +898,8 @@ document.addEventListener('DOMContentLoaded', () => {
       totalMeters += map.distance(latlngs[i - 1], latlngs[i]);
     }
     if (latlngs.length > 1) {
-      applyRouteDistanceMeters(totalMeters);
+      setPlannedRouteMetrics(totalMeters);
+      setFloatingShuffleVisible(true);
     }
   }
 
@@ -876,7 +938,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (waypoints.length > 0) {
       waypoints.pop();
       rebuildWaypoints();
-      if (waypoints.length <= 1) setFloatingShuffleVisible(false);
+      if (waypoints.length <= 1) {
+        plannedRoute = { steps: 0, distanceKm: 0 };
+        setFloatingShuffleVisible(false);
+        updateHudUI();
+      }
     }
   });
 
@@ -885,7 +951,9 @@ document.addEventListener('DOMContentLoaded', () => {
     routeLine.setLatLngs([]);
     markers.forEach(m => map.removeLayer(m));
     markers = [];
+    plannedRoute = { steps: 0, distanceKm: 0 };
     setFloatingShuffleVisible(false);
+    updateHudUI();
   });
 
   document.getElementById('locateMeBtn').addEventListener('click', () => {
@@ -904,11 +972,44 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // NUTIKAS TRAJEKTOORI GENERAATOR:
-  // 1) "🔦 Ainult valgustatud tänavad / Ohutu ring" (väldib metsaradu)
-  // 2) Päris ümara ringi matemaatika (keskpunkt nihutatud, 90° sammud)
-  // 3) Tupikute ja maantee tagasipöörete eemaldamine
+  // AVALEHE "PUUDUVAD SAMMUD" RIBA + TRAJEKTOORI GENERAATOR
   // ==========================================================================
+
+  function setupMissingStepsHomeBar() {
+    const bottomHud = document.querySelector('.bottom-hud');
+    const actionRow = document.querySelector('.hud-action-row');
+    if (!bottomHud || !actionRow) return;
+
+    const missingBar = document.createElement('div');
+    missingBar.id = 'missingStepsBanner';
+    missingBar.className = 'missing-steps-bar';
+    missingBar.innerHTML = `
+      <div class="missing-info-col">
+        <div class="missing-title" id="missingStepsTitle">🎯 Puudu: 10 000 sammu</div>
+        <div class="missing-sub" id="missingStepsSub">Vajuta "Puuduv ring", et rada kaardile luua</div>
+      </div>
+      <div class="missing-actions-group">
+        <button type="button" id="setWalkedStepsBtn" class="btn-set-current-steps" title="Sisesta täna juba tehtud sammud">
+          ✏️ Lisa tehtud
+        </button>
+        <button type="button" id="generateMissingStepsRouteBtn" class="btn-fill-missing-route">
+          ✨ Puuduv ring
+        </button>
+      </div>
+    `;
+    bottomHud.insertBefore(missingBar, actionRow);
+
+    document.getElementById('setWalkedStepsBtn').addEventListener('click', promptEditCurrentSteps);
+
+    document.getElementById('generateMissingStepsRouteBtn').addEventListener('click', () => {
+      const missing = getMissingSteps();
+      const stepsToGenerate = missing >= 300 ? missing : 3000;
+      lastTargetSteps = stepsToGenerate;
+      const stepsInput = document.getElementById('targetRouteStepsInput');
+      if (stepsInput) stepsInput.value = stepsToGenerate;
+      generateLoopRouteForSteps(stepsToGenerate);
+    });
+  }
 
   function setupRouteGeneratorUI() {
     const viewport = document.querySelector('.app-viewport');
@@ -917,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const magicFab = document.createElement('button');
     magicFab.className = 'tool-fab magic-fab';
-    magicFab.title = 'Genereeri sammudeks trajektoor';
+    magicFab.title = 'Genereeri puuduvate sammude trajektoor';
     magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
     toolsBar.prepend(magicFab);
 
@@ -928,6 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     viewport.appendChild(floatingShuffleBtn);
 
     const isSafeDefault = state.settings.safeLitOnly !== false;
+    const initialMissing = getMissingSteps() || 3000;
 
     const popover = document.createElement('div');
     popover.id = 'routeGenPopover';
@@ -936,12 +1038,12 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="route-gen-header">
         <div class="route-gen-title">
           <span class="spark">✨</span>
-          <span>Automaatne Trajektoori Generaator</span>
+          <span>Puuduvate Sammude Rajageneraator</span>
         </div>
         <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">✕</button>
       </div>
-      <p class="route-gen-sub">
-        Vali sammude arv ja GoWalk joonistab alguspunktist (Pin A) puhta ringtrajektoori:
+      <p class="route-gen-sub" id="routeGenMissingHint">
+        Koosta täpselt puuduvate sammude jagu ringtrajektoor alguspunktist (Pin A):
       </p>
 
       <button type="button" id="safeLitRouteToggleBtn" class="safe-route-toggle ${isSafeDefault ? 'active' : ''}">
@@ -958,14 +1060,14 @@ document.addEventListener('DOMContentLoaded', () => {
       </button>
 
       <div class="route-preset-pills">
+        <button class="preset-pill active" id="presetMissingPill" data-steps="missing">Puuduvad</button>
         <button class="preset-pill" data-steps="3000">3 000</button>
         <button class="preset-pill" data-steps="5000">5 000</button>
-        <button class="preset-pill active" data-steps="8000">8 000</button>
-        <button class="preset-pill" data-steps="10000">10 000</button>
+        <button class="preset-pill" data-steps="8000">8 000</button>
       </div>
       <div class="route-custom-row">
-        <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${state.settings.stepGoal || 8000}" step="500" min="500" placeholder="Sammude arv..." />
-        <button id="generateSmartRouteBtn" class="btn-generate-go">Genereeri rada</button>
+        <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${initialMissing}" step="500" min="300" placeholder="Puuduvad sammud..." />
+        <button id="generateSmartRouteBtn" class="btn-generate-go">Koosta ring</button>
       </div>
       <button id="shuffleRoutePopoverBtn" class="btn-shuffle-route">
         🔄 Teine suund (Shuffle)
@@ -975,13 +1077,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (window.lucide) lucide.createIcons();
 
-    const togglePopover = () => popover.classList.toggle('open');
-    magicFab.addEventListener('click', togglePopover);
+    const stepsInput = document.getElementById('targetRouteStepsInput');
+    const missingHint = document.getElementById('routeGenMissingHint');
+
+    const openAndSyncPopover = () => {
+      const missing = getMissingSteps();
+      const suggested = missing >= 300 ? missing : 3000;
+      stepsInput.value = suggested;
+      if (missing > 0) {
+        missingHint.textContent = `Sul on täna eesmärgist puudu ${missing.toLocaleString('et-EE')} sammu. Koosta täpselt puuduv ring:`;
+      } else {
+        missingHint.textContent = 'Päeva eesmärk on täis! Võid genereerida lisaringi (nt 3 000 sammu):';
+      }
+      popover.classList.toggle('open');
+    };
+
+    magicFab.addEventListener('click', openAndSyncPopover);
     document.getElementById('closeRouteGenBtn').addEventListener('click', () => {
       popover.classList.remove('open');
     });
 
-    // Valgustatud / Ohutu raja lüliti loogika
     const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
     const safeToggleEmoji = document.getElementById('safeToggleEmoji');
     const safeToggleSubtext = document.getElementById('safeToggleSubtext');
@@ -1000,13 +1115,18 @@ document.addEventListener('DOMContentLoaded', () => {
       saveState();
     });
 
-    const stepsInput = document.getElementById('targetRouteStepsInput');
-
     popover.querySelectorAll('.preset-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         popover.querySelectorAll('.preset-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
-        const val = parseInt(pill.getAttribute('data-steps'), 10);
+        const rawAttr = pill.getAttribute('data-steps');
+        const missing = getMissingSteps();
+        const val =
+          rawAttr === 'missing'
+            ? missing >= 300
+              ? missing
+              : 3000
+            : parseInt(rawAttr, 10);
         stepsInput.value = val;
         lastTargetSteps = val;
         generateLoopRouteForSteps(val);
@@ -1015,20 +1135,23 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('generateSmartRouteBtn').addEventListener('click', () => {
-      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || state.settings.stepGoal);
+      const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
+      const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || fallback);
       lastTargetSteps = targetSteps;
       generateLoopRouteForSteps(targetSteps);
       popover.classList.remove('open');
     });
 
     document.getElementById('shuffleRoutePopoverBtn').addEventListener('click', () => {
-      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
+      const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
+      const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || lastTargetSteps || fallback);
       lastTargetSteps = targetSteps;
       generateLoopRouteForSteps(targetSteps);
     });
 
     floatingShuffleBtn.addEventListener('click', () => {
-      const targetSteps = Math.max(500, parseInt(stepsInput.value, 10) || lastTargetSteps || state.settings.stepGoal);
+      const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
+      const targetSteps = lastTargetSteps || fallback;
       generateLoopRouteForSteps(targetSteps);
     });
   }
@@ -1053,7 +1176,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return L.latLng((lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI);
   }
 
-  // Otsib OpenStreetMapist päris valgustatud tänavate ja asulasiseste teede punktid (välistab metsarajad)
   async function fetchSafeLitStreetNodes(startPoint, searchRadiusMeters) {
     const radius = Math.min(3500, Math.max(600, Math.round(searchRadiusMeters * 2.2)));
     const cacheKey = `${startPoint.lat.toFixed(3)}_${startPoint.lng.toFixed(3)}_${radius}`;
@@ -1086,7 +1208,6 @@ document.addEventListener('DOMContentLoaded', () => {
         data.elements.forEach(el => {
           const isLit = el.tags?.lit === 'yes';
           if (Array.isArray(el.geometry)) {
-            // Võta iga 3. tänavapunkt, et hoida nimekiri kiire ja ühtlane
             for (let i = 0; i < el.geometry.length; i += 3) {
               const pt = el.geometry[i];
               if (pt && pt.lat && pt.lon) {
@@ -1106,7 +1227,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Haarab kontrollpunkti lähima valgustatud / asulasisese tänava peale, et vältida metsa ja maanteid
   function snapPointToSafeStreet(idealLatLng, safeNodes, maxSnapDistMeters) {
     if (!safeNodes || safeNodes.length === 0) return idealLatLng;
     let bestNode = null;
@@ -1117,7 +1237,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const candidate = L.latLng(n.lat, n.lng);
       const dist = map.distance(idealLatLng, candidate);
       if (dist <= maxSnapDistMeters) {
-        // Eelistame otseselt valgustatud (lit=yes) tänavaid
         const score = n.lit ? dist * 0.72 : dist;
         if (score < bestScore) {
           bestScore = score;
@@ -1128,9 +1247,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return bestNode || idealLatLng;
   }
 
-  // Ehitab PÄRIS RINGI, mis algab ja lõpeb punktis A:
-  // Ringi keskpunkt O on nihutatud punktist A eemale raadiuse R võrra.
-  // Punktid A, 1, 2, 3 asuvad 90° sammudega ümber ringi keskpunkti O.
   function buildTrueCircularWaypoints(
     startPoint,
     loopRadiusMeters,
@@ -1139,13 +1255,9 @@ document.addEventListener('DOMContentLoaded', () => {
     aspectRatio = 1.0,
     safeNodes = []
   ) {
-    // 1. Nihuta ringi keskpunkt O alguspunktist A suunas centerBearingRad
     const loopCenter = offsetCoordinate(startPoint, loopRadiusMeters, centerBearingRad);
-
-    // 2. Alguspunkt A asub keskpunktist O vaadatuna nurga (centerBearingRad + PI) all
     const angleA = centerBearingRad + Math.PI;
 
-    // 3. Paiguta kontrollpunktid 1, 2, 3 täpselt 90°, 180° ja 270° peale ümber keskpunkti O
     const angle1 = angleA + turnSign * (Math.PI * 0.5);
     const angle2 = angleA + turnSign * Math.PI;
     const angle3 = angleA + turnSign * (Math.PI * 1.5);
@@ -1154,7 +1266,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let p2 = offsetCoordinate(loopCenter, loopRadiusMeters * 1.08, angle2);
     let p3 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle3);
 
-    // 4. Kui "Ainult valgustatud tänavad" on aktiivne, haagi punktid 1, 2, 3 lähimatele valgustatud tänavatele
     if (safeNodes && safeNodes.length > 0) {
       const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
       p1 = snapPointToSafeStreet(p1, safeNodes, snapLimit);
@@ -1165,7 +1276,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return [startPoint, p1, p2, p3];
   }
 
-  // Eemaldab marsruudi geomeetriast edasi-tagasi tupikud / maantee tagasipöörded (spurs)
   function removeDeadEndSpurs(latlngs) {
     if (!Array.isArray(latlngs) || latlngs.length < 8) return latlngs;
     let pts = latlngs.slice();
@@ -1175,10 +1285,8 @@ document.addEventListener('DOMContentLoaded', () => {
       let i = 0;
       while (i < pts.length) {
         let jumpIndex = -1;
-        // Vaata ettepoole, kas rada naaseb peaaegu samasse punkti (kitsas edasi-tagasi oga)
         const maxLookAhead = Math.min(pts.length - 1, i + 45);
         for (let j = maxLookAhead; j >= i + 3; j--) {
-          // Ära lõika maha tervet suurt ringi ennast (alguse ja lõpu kokkusaamist)
           if (i < 5 && j > pts.length - 6) continue;
           const distBetween = map.distance(pts[i], pts[j]);
           if (distBetween < 18) {
@@ -1198,14 +1306,11 @@ document.addEventListener('DOMContentLoaded', () => {
     return pts;
   }
 
-  // Pärib jalakäijasõbraliku marsruudi (eelistab OpenStreetMap Germany jalakäija/tänavate serverit)
   async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
     const coordsQuery = [...pointsList, pointsList[0]]
       .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
       .join(';');
 
-    // Kui Ohutu/Valgustatud režiim on sees, kasuta tänavavõrgu jalgratta/kergliiklustee ruuterit (väldib metsaradu),
-    // vastasel juhul jalakäijate metsa- ja pargiradade ruuterit.
     const endpoints = safeLitOnly
       ? [
           `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
@@ -1230,18 +1335,16 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
+  // Genereerib ringtrajektoori täpselt etteantud (nt puuduvate) sammude jaoks,
+  // ilma et muudaks kasutaja päeva sammueesmärki või juba kõnnitud sammude arvu!
   async function generateLoopRouteForSteps(targetSteps) {
     const strideMeters = (state.settings.strideCm || 76) / 100;
     const targetMeters = targetSteps * strideMeters;
     const safeLitOnly = state.settings.safeLitOnly !== false;
-
-    state.settings.stepGoal = targetSteps;
-    const settingStepGoalEl = document.getElementById('settingStepGoal');
-    if (settingStepGoalEl) settingStepGoalEl.value = targetSteps;
+    lastTargetSteps = targetSteps;
 
     const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
 
-    // Keera iga Shuffle vajutusega ringi suunda 95°–165° võrra uude ilmakaarde
     const angleShift = Math.PI * 0.53 + Math.random() * (Math.PI * 0.38);
     lastGeneratedBearing = (lastGeneratedBearing + angleShift) % (2 * Math.PI);
 
@@ -1250,14 +1353,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const aspectRatios = [0.95, 0.82, 1.12];
     const aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
 
-    // Ringi ümbermõõt tänavavõrgus on ~8.0 * loopRadius (sest 2*PI*R * 1.28 tänavakõverus ≈ 8.0*R)
-    let loopRadiusMeters = Math.max(120, targetMeters / 8.0);
+    let loopRadiusMeters = Math.max(100, targetMeters / 8.0);
 
     if (floatingShuffleBtn) {
-      floatingShuffleBtn.innerHTML = '<span>⏳ Otsin ohutut ringrada...</span>';
+      floatingShuffleBtn.classList.add('visible');
+      floatingShuffleBtn.innerHTML = '<span>⏳ Arvutan puuduvate sammude ringi...</span>';
     }
 
-    // Kui kasutaja soovib ainult valgustatud/ohutuid tänavaid, lae OSM-ist valgustatud tänavate punktid
     const safeNodes = safeLitOnly
       ? await fetchSafeLitStreetNodes(startPoint, loopRadiusMeters)
       : [];
@@ -1274,8 +1376,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       let route = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
 
-      // Kui tänavavõrgu tegelik pikkus erineb sihist üle 18%, skaleeri ringi raadiust täpseks
-      if (route && route.distance > 100) {
+      if (route && route.distance > 80) {
         const ratio = targetMeters / route.distance;
         if (ratio < 0.82 || ratio > 1.18) {
           const clampedRatio = Math.max(0.55, Math.min(1.65, ratio));
@@ -1295,10 +1396,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (route) {
         let latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
-        // Eemalda võimalikud tupiktänavate edasi-tagasi ogad, et rada oleks puhas ring
         latlngs = removeDeadEndSpurs(latlngs);
 
-        // Paiguta markerid 1, 2, 3 täpselt puhastatud ringi 25%, 50% ja 75% peale
         if (latlngs.length >= 12) {
           const q1 = latlngs[Math.floor(latlngs.length * 0.25)];
           const q2 = latlngs[Math.floor(latlngs.length * 0.5)];
@@ -1307,7 +1406,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         rebuildWaypoints(latlngs, true);
-        applyRouteDistanceMeters(targetMeters);
+        setPlannedRouteMetrics(targetMeters);
         map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
         setFloatingShuffleVisible(true);
         return;
@@ -1318,13 +1417,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     waypoints.push(startPoint);
     rebuildWaypoints(null, true);
-    applyRouteDistanceMeters(targetMeters);
+    setPlannedRouteMetrics(targetMeters);
     map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
     setFloatingShuffleVisible(true);
   }
 
   // ==========================================================================
-  // SAMMUDE RING, TAIMER JA PÄRIS GPS-KÕNDIMINE (ILMA SIMULATSIOONITA)
+  // SAMMUDE RING, PUUDUVAD SAMMUD JA PÄRIS GPS-KÕNDIMINE
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -1340,8 +1439,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateHudUI() {
-    const steps = state.today.steps;
+    const steps = state.today.steps || 0;
     const goal = state.settings.stepGoal || 10000;
+    const missing = getMissingSteps();
     const pct = Math.min(100, Math.round((steps / goal) * 100));
 
     document.getElementById('liveSteps').textContent = steps.toLocaleString('et-EE');
@@ -1352,13 +1452,38 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('stepRingProgress').style.strokeDashoffset = offset;
 
     const strideMeters = (state.settings.strideCm || 76) / 100;
-    const calcKm = ((steps * strideMeters) / 1000).toFixed(2);
-    state.today.distanceKm = Math.max(state.today.distanceKm, parseFloat(calcKm));
+    const walkedKm = +((steps * strideMeters) / 1000).toFixed(2);
+    state.today.distanceKm = walkedKm;
     state.today.calories = Math.round(steps * 0.04);
 
     document.getElementById('liveDistance').textContent = state.today.distanceKm.toFixed(2);
     document.getElementById('liveCalories').textContent = state.today.calories;
     document.getElementById('liveDuration').textContent = formatDuration(state.today.durationSec);
+
+    // Uuenda avalehe "Puudu eesmärgist" riba
+    const missingBanner = document.getElementById('missingStepsBanner');
+    const missingTitle = document.getElementById('missingStepsTitle');
+    const missingSub = document.getElementById('missingStepsSub');
+    const generateMissingBtn = document.getElementById('generateMissingStepsRouteBtn');
+
+    if (missingBanner && missingTitle && missingSub && generateMissingBtn) {
+      if (missing > 0) {
+        const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
+        missingBanner.classList.remove('goal-completed');
+        missingTitle.textContent = `🎯 Eesmärgist puudu: ${missing.toLocaleString('et-EE')} sammu`;
+        if (plannedRoute.steps > 0) {
+          missingSub.textContent = `Kaardil valmis: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`;
+        } else {
+          missingSub.textContent = `Vaja kõndida veel ~${missingKm} km`;
+        }
+        generateMissingBtn.textContent = `✨ ${missing.toLocaleString('et-EE')} sammu ring`;
+      } else {
+        missingBanner.classList.add('goal-completed');
+        missingTitle.textContent = '🎉 Päeva sammueesmärk on täidetud!';
+        missingSub.textContent = `Oled täna teinud ${steps.toLocaleString('et-EE')} sammu. Super töö!`;
+        generateMissingBtn.textContent = '✨ Lisaring (3 000)';
+      }
+    }
   }
 
   const startWalkBtn = document.getElementById('startWalkBtn');
@@ -1387,8 +1512,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const strideMeters = (state.settings.strideCm || 76) / 100;
                 const realAddedSteps = Math.round(movedMeters / strideMeters);
                 state.today.steps += realAddedSteps;
-                state.today.distanceKm = +(state.today.distanceKm + movedMeters / 1000).toFixed(2);
                 lastGpsLatLng = currentLatLng;
+                saveState();
                 updateHudUI();
               }
             } else {
@@ -1418,15 +1543,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  document.getElementById('quickAddStepsBtn').addEventListener('click', () => {
-    const popover = document.getElementById('routeGenPopover');
-    if (popover) {
-      popover.classList.toggle('open');
-    }
-  });
+  // Alumine parempoolne "+" nupp genereerib kohe puuduvate sammude ringi (või avab valiku)
+  const quickAddStepsBtn = document.getElementById('quickAddStepsBtn');
+  if (quickAddStepsBtn) {
+    quickAddStepsBtn.title = 'Ava puuduvate sammude rajageneraator';
+    quickAddStepsBtn.addEventListener('click', () => {
+      const popover = document.getElementById('routeGenPopover');
+      const stepsInput = document.getElementById('targetRouteStepsInput');
+      if (stepsInput) {
+        const missing = getMissingSteps();
+        stepsInput.value = missing >= 300 ? missing : 3000;
+      }
+      if (popover) {
+        popover.classList.toggle('open');
+      }
+    });
+  }
 
   // ==========================================================================
-  // STATISTIKA, TERVISE SÜNKRONISEERIMINE & SEADED
+  // STATISTIKA & SEADED
   // ==========================================================================
 
   function renderStatsAndHistory() {
@@ -1466,84 +1601,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const PROVIDER_LABELS = {
-    health_connect: 'Google Health Connect',
-    apple_health: 'Apple Health (HealthKit)',
-    samsung: 'Samsung Health',
-    fitbit: 'Fitbit',
-    xiaomi: 'Xiaomi (Zepp Life / Mi Fitness)',
-    garmin: 'Garmin Connect',
-    huawei: 'Huawei Health'
-  };
-
-  function renderConnectedProviders() {
-    document.querySelectorAll('[data-connect]').forEach(btn => {
-      const provider = btn.getAttribute('data-connect');
-      const isConnected = !!state.connectedProviders[provider];
-      btn.classList.toggle('connected', isConnected);
-      btn.textContent = isConnected ? 'Ühendatud ✓' : 'Ühenda';
-    });
-  }
-
-  document.querySelectorAll('[data-connect]').forEach(btn => {
-    const provider = btn.getAttribute('data-connect');
-    const providerTitle = PROVIDER_LABELS[provider] || provider;
-
-    btn.addEventListener('click', async () => {
-      const isConnected = !state.connectedProviders[provider];
-      state.connectedProviders[provider] = isConnected;
-      renderConnectedProviders();
-      saveState();
-      await pushToCloud();
-
-      if (isConnected) {
-        alert(
-          `✅ ${providerTitle} on nüüd sinu GoWalk kontoga seotud ja pilve salvestatud!\n\nSammude sünkroniseerimine toimub automaatselt taustal.`
-        );
-      } else {
-        alert(`ℹ️ ${providerTitle} ühendus on katkestatud.`);
-      }
-    });
-  });
-
   const settingStepGoal = document.getElementById('settingStepGoal');
   const settingStrideLength = document.getElementById('settingStrideLength');
   const settingMapStyle = document.getElementById('settingMapStyle');
 
-  settingStepGoal.value = state.settings.stepGoal;
-  settingStrideLength.value = state.settings.strideCm;
-  settingMapStyle.value = state.settings.mapLayer;
+  if (settingStepGoal) settingStepGoal.value = state.settings.stepGoal;
+  if (settingStrideLength) settingStrideLength.value = state.settings.strideCm;
+  if (settingMapStyle) settingMapStyle.value = state.settings.mapLayer;
 
-  settingStepGoal.addEventListener('change', e => {
-    state.settings.stepGoal = Math.max(1000, parseInt(e.target.value, 10) || 10000);
-    saveState();
-    updateHudUI();
-  });
+  if (settingStepGoal) {
+    settingStepGoal.addEventListener('change', e => {
+      state.settings.stepGoal = Math.max(1000, parseInt(e.target.value, 10) || 10000);
+      saveState();
+      updateHudUI();
+    });
+  }
 
-  settingStrideLength.addEventListener('change', e => {
-    state.settings.strideCm = Math.max(40, parseInt(e.target.value, 10) || 76);
-    saveState();
-    updateHudUI();
-  });
+  if (settingStrideLength) {
+    settingStrideLength.addEventListener('change', e => {
+      state.settings.strideCm = Math.max(40, parseInt(e.target.value, 10) || 76);
+      saveState();
+      updateHudUI();
+    });
+  }
 
-  settingMapStyle.addEventListener('change', e => {
-    switchMapLayer(e.target.value);
-  });
+  if (settingMapStyle) {
+    settingMapStyle.addEventListener('change', e => {
+      switchMapLayer(e.target.value);
+    });
+  }
 
-  document.getElementById('exportDataBtn').addEventListener('click', () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute('href', dataStr);
-    dlAnchor.setAttribute('download', `gowalk_ajalugu_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
-  });
+  const exportBtn = document.getElementById('exportDataBtn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
+      const dlAnchor = document.createElement('a');
+      dlAnchor.setAttribute('href', dataStr);
+      dlAnchor.setAttribute('download', `gowalk_ajalugu_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(dlAnchor);
+      dlAnchor.click();
+      dlAnchor.remove();
+    });
+  }
 
   // Alglaadimine
+  setupMissingStepsHomeBar();
   setupRouteGeneratorUI();
   renderProfile();
-  renderConnectedProviders();
   checkAdminAccess();
   switchMapLayer(state.settings.mapLayer);
   updateHudUI();
