@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & ROUTE BUILDER
+   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & COLOR-LOCK
    ========================================================================== */
 
 import {
@@ -37,16 +37,37 @@ async function loadStatsModuleSafely() {
 }
 
 function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
+  // 1. Lukusta Samsung Interneti ja Chrome'i jaoks <meta name="color-scheme" content="only dark">
+  let metaScheme = document.querySelector('meta[name="color-scheme"]');
+  if (!metaScheme) {
+    metaScheme = document.createElement('meta');
+    metaScheme.name = 'color-scheme';
+    document.head.appendChild(metaScheme);
+  }
+  metaScheme.content = 'only dark';
+
+  let metaSupported = document.querySelector('meta[name="supported-color-schemes"]');
+  if (!metaSupported) {
+    metaSupported = document.createElement('meta');
+    metaSupported.name = 'supported-color-schemes';
+    document.head.appendChild(metaSupported);
+  }
+  metaSupported.content = 'dark';
+
+  // 2. Globaalsed värvilukustuse ja Midnight Indigo stiilid
   if (!document.getElementById('gw-midnight-indigo-theme')) {
     const st = document.createElement('style');
     st.id = 'gw-midnight-indigo-theme';
     const css = [
+      ':root, html { color-scheme: only dark !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; }',
+      'body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background-color: #0f1429 !important; color: #f8fafc !important; color-scheme: only dark !important; forced-color-adjust: none !important; }',
+      'img, svg, canvas, map, .leaflet-container, .leaflet-pane, .leaflet-tile, .leaflet-layer { color-scheme: normal !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; filter: none !important; }',
       'body, .app-shell, .subview-modal, .sidebar-drawer { background: radial-gradient(circle at 50% 12%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
-      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      '#startWalkBtn, .primary-btn, .generate-btn { background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; }',
+      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; forced-color-adjust: none !important; }',
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta { background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; color-scheme: only dark !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; }',
       '#startWalkBtn.walking-active { background: linear-gradient(90deg, #e11d48 0%, #f43f5e 100%) !important; }',
-      '.map-style-pill.active, .layer-btn.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.45)) !important; border-color: #c084fc !important; color: #fff !important; }',
-      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; }',
+      '.map-style-pill.active, .layer-btn.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.45)) !important; border-color: #c084fc !important; color: #fff !important; forced-color-adjust: none !important; }',
+      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; forced-color-adjust: none !important; }',
       '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
       '.gw-bnav-btn svg { width: 20px; height: 20px; }',
       '.gw-bnav-btn.active { color: #ec4899; }',
@@ -81,7 +102,6 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     document.head.appendChild(st);
   }
 
-  // Ehita "Loo jalutusring" täisvaade (3. ekraan kavandil)
   if (!document.getElementById('gwRouteBuilderModal')) {
     const rb = document.createElement('div');
     rb.id = 'gwRouteBuilderModal';
@@ -204,7 +224,6 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     });
   }
 
-  // Ehita 4 nupuga alumine navigatsiooniriba (Avaleht | Marsruudid | Statistika | Seaded)
   if (!document.getElementById('gwBottomNavbar')) {
     const nav = document.createElement('nav');
     nav.id = 'gwBottomNavbar';
@@ -439,7 +458,6 @@ function bootGoWalkApp() {
     });
   }
 
-  // Suuna ka parempoolne sädelev generaatori nupp uuele "Loo jalutusring" vaatele
   const oldGenTrigger = document.getElementById('openGeneratorBtn') || document.querySelector('[data-action="generate"]');
   if (oldGenTrigger) {
     oldGenTrigger.addEventListener('click', function (e) {
