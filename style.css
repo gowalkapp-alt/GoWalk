@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAIN STYLESHEET (MODULAR IMPORTS & BASE COLOR LOCK)
+   GOWALK PRO — MAIN STYLESHEET (MODULAR IMPORTS & UNIFIED MIDNIGHT INDIGO)
    ========================================================================== */
 
 @import url('./variables.css');
@@ -18,4 +18,98 @@ body {
   text-size-adjust: 100%;
   background-color: #0f1429 !important;
   color: #f8fafc !important;
+}
+
+/* ==========================================================================
+   SAMMURATTA (DIAL MODAL) UUS MIDNIGHT INDIGO & NEOON-ROOSA STIIL
+   ========================================================================== */
+
+/* Sammuratta välimine kaart ja Midnight Indigo taust */
+[id*="dial" i] .modal-card,
+[id*="dial" i] .dial-card,
+[class*="dial-modal"] > div,
+.dial-container,
+.dial-content {
+  background: linear-gradient(165deg, rgba(28, 34, 74, 0.96) 0%, rgba(15, 20, 42, 0.98) 100%) !important;
+  border: 1px solid rgba(236, 72, 153, 0.38) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 28px rgba(168, 85, 247, 0.25) !important;
+}
+
+/* Ülemised vahekaardid: "Täna tehtud" / "Päeva eesmärk" */
+[id*="dial" i] button.active,
+[class*="dial"] button.active,
+.dial-tab.active,
+.dial-mode-btn.active {
+  background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(244, 114, 182, 0.6) !important;
+  box-shadow: 0 0 16px rgba(236, 72, 153, 0.5) !important;
+}
+
+/* Keskmine sammurõngas ja liuguri nupp (neoon-roosa/lilla kuma) */
+[id*="dial" i] svg circle[stroke-dasharray],
+[class*="dial"] svg circle[stroke-dasharray],
+[id*="dial" i] svg circle:nth-of-type(2),
+#dialProgressRing,
+.dial-progress-ring {
+  stroke: #ec4899 !important;
+  filter: drop-shadow(0 0 10px rgba(236, 72, 153, 0.7)) !important;
+}
+
+[id*="dial" i] [id*="thumb" i],
+[id*="dial" i] [class*="thumb" i],
+[class*="dial"] [class*="thumb" i],
+[class*="dial"] [class*="handle" i],
+#dialThumb {
+  background: #ffffff !important;
+  border: 4px solid #ec4899 !important;
+  box-shadow: 0 0 16px rgba(236, 72, 153, 0.85) !important;
+}
+
+/* Keskmine "Puudu: ... sammu" märgis */
+[id*="dial" i] [class*="missing" i],
+[id*="dial" i] [id*="missing" i],
+[class*="dial"] [class*="badge" i] {
+  background: rgba(124, 58, 237, 0.22) !important;
+  border: 1px solid rgba(236, 72, 153, 0.45) !important;
+  color: #f8fafc !important;
+}
+
+/* Kiirnupud: -500, -100, +100, +500 */
+[id*="dial" i] [class*="quick" i] button,
+[id*="dial" i] [class*="step" i] button,
+.dial-step-btn,
+.quick-step-btn {
+  background: rgba(24, 30, 66, 0.9) !important;
+  border: 1px solid rgba(168, 85, 247, 0.35) !important;
+  color: #ffffff !important;
+  border-radius: 14px !important;
+}
+
+/* Peamine tegevusnupp: "Salvesta & koosta ... sammu ring" */
+#dialSaveAndRouteBtn,
+#saveAndRouteDialBtn,
+#dialRouteBtn,
+[id*="dial" i] button[id*="route" i],
+[id*="dial" i] button[id*="gen" i],
+[id*="dial" i] button.primary-btn,
+[class*="dial"] button.primary-btn,
+[id*="dial" i] button:nth-last-of-type(2) {
+  background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important;
+  border: 1px solid rgba(244, 114, 182, 0.55) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+  box-shadow: 0 6px 22px rgba(236, 72, 153, 0.48) !important;
+}
+
+/* Alumine nupp: "Salvesta sammud" */
+#dialSaveOnlyBtn,
+#saveStepsOnlyBtn,
+[id*="dial" i] button:last-of-type:not(.close-modal-btn):not([id*="close" i]) {
+  background: rgba(20, 25, 54, 0.92) !important;
+  border: 1px solid rgba(168, 85, 247, 0.32) !important;
+  color: #e2e8f0 !important;
+  border-radius: 999px !important;
 }
