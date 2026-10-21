@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT & ANTI-DRIFT HYBRID STEP COUNTER
+   GOWALK PRO — 6. MAIN ENTRY POINT & CRASH-PROOF DYNAMIC STATS LOADER
    ========================================================================== */
 
 import {
@@ -23,11 +23,24 @@ import {
 
 import { setupStepDialModal } from './dial.js';
 import { checkAdminAccess, loadAdminDashboard, initAdminAndPromos } from './admin.js';
-import {
-  renderStatsAndHistory,
-  cleanAndMergeHistoryRecords,
-  initStatsModule
-} from './stats.js';
+
+// Tõrkekindel stats.js laadija (toetab ka telefoni klaviatuuri "Stats.js" nimekuju)
+let statsModuleCache = null;
+async function loadStatsModuleSafely() {
+  if (statsModuleCache) return statsModuleCache;
+  try {
+    statsModuleCache = await import('./stats.js');
+    return statsModuleCache;
+  } catch (err1) {
+    try {
+      statsModuleCache = await import('./Stats.js');
+      return statsModuleCache;
+    } catch (err2) {
+      console.error('Stats mooduli laadimise info:', err1);
+      throw err1;
+    }
+  }
+}
 
 function bootGoWalkApp() {
   const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
@@ -174,7 +187,20 @@ function bootGoWalkApp() {
       if (targetId !== 'home') {
         const modal = document.getElementById(targetId);
         if (modal) {
-          if (targetId === 'statsModal') renderStatsAndHistory();
+          if (targetId === 'statsModal') {
+            loadStatsModuleSafely()
+              .then(mod => {
+                if (mod && typeof mod.renderStatsAndHistory === 'function') {
+                  mod.renderStatsAndHistory();
+                }
+              })
+              .catch(err => {
+                alert(
+                  'Statistika mooduli (stats.js) viga: ' +
+                    (err && err.message ? err.message : 'Faili ei leitud')
+                );
+              });
+          }
           if (targetId === 'adminModal') loadAdminDashboard();
           modal.classList.add('open');
         }
@@ -201,6 +227,7 @@ function bootGoWalkApp() {
   let isWalking = false;
   let walkTimer = null;
   let lastTimerCheckMs = 0;
+  let sessionStartSteps = 0;
 
   let gpsWatchId = null;
   let lastGpsLatLng = null;
@@ -501,6 +528,7 @@ function bootGoWalkApp() {
 
       if (isWalking) {
         if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
+        sessionStartSteps = state.today.steps || 0;
         lastGpsLatLng = null;
         lastGpsTimestampMs = 0;
         gpsRemainderMeters = 0;
@@ -535,9 +563,18 @@ function bootGoWalkApp() {
 
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
 
-        cleanAndMergeHistoryRecords();
-        saveState();
-        updateHudUI();
+        loadStatsModuleSafely()
+          .then(mod => {
+            if (mod && typeof mod.cleanAndMergeHistoryRecords === 'function') {
+              mod.cleanAndMergeHistoryRecords();
+            }
+            saveState();
+            updateHudUI();
+          })
+          .catch(() => {
+            saveState();
+            updateHudUI();
+          });
       }
     });
   }
@@ -593,10 +630,16 @@ function bootGoWalkApp() {
   }
 
   function refreshAllUI() {
-    initStatsModule();
     renderProfile();
     updateHudUI();
     checkAdminAccess();
+    loadStatsModuleSafely()
+      .then(mod => {
+        if (mod && typeof mod.initStatsModule === 'function') {
+          mod.initStatsModule();
+        }
+      })
+      .catch(() => {});
   }
 
   // ==========================================================================
