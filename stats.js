@@ -1,12 +1,11 @@
 /* ==========================================================================
-   GOWALK PRO — STATS.JS (COMPACT & MOBILE-SAFE ACTIVITY DASHBOARD)
+   GOWALK PRO — STATS.JS ("SINU ARENG" PRO DASHBOARD MODULE)
    ========================================================================== */
 
 import { state } from './state.js';
 
 let activePeriod = 'day';
 let selectedDateKey = '';
-let activeBarIdx = -1;
 
 export function normalizeDateKey(raw) {
   const fallback = (state.today && state.today.date) || '2026-10-21';
@@ -72,45 +71,56 @@ export function cleanAndMergeHistoryRecords() {
 }
 
 function injectStatsCss() {
-  if (document.getElementById('gw-stats-css')) return;
+  if (document.getElementById('gw-sinu-areng-css')) return;
   const st = document.createElement('style');
-  st.id = 'gw-stats-css';
-  st.textContent = `
-    .gw-act-wrap { display:flex; flex-direction:column; gap:15px; padding-bottom:20px; }
-    .gw-tabs { display:grid; grid-template-columns:repeat(4,1fr); background:rgba(14,10,29,0.8); border:1px solid rgba(139,92,246,0.25); border-radius:99px; padding:4px; gap:4px; }
-    .gw-tab { background:transparent; border:1px solid transparent; color:rgba(203,213,225,0.75); font:600 0.82rem inherit; padding:8px 4px; border-radius:99px; cursor:pointer; }
-    .gw-tab.active { background:rgba(139,92,246,0.2); border-color:#a855f7; color:#fff; box-shadow:0 0 12px rgba(168,85,247,0.35); }
-    .gw-strip { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
-    .gw-pill { display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 2px; border-radius:99px; background:rgba(20,15,38,0.78); border:1px solid rgba(139,92,246,0.2); color:#e2e8f0; cursor:pointer; }
-    .gw-pill-n { font-size:0.9rem; font-weight:700; }
-    .gw-pill-d { font-size:0.68rem; opacity:0.75; }
-    .gw-pill.active { background:linear-gradient(180deg,#ec4899 0%,#8b5cf6 52%,#06b6d4 100%); border-color:rgba(255,255,255,0.5); color:#fff; box-shadow:0 6px 16px rgba(168,85,247,0.5); transform:translateY(-2px); }
-    .gw-pill.future { opacity:0.35; pointer-events:none; }
-    .gw-card { background:linear-gradient(160deg,rgba(27,20,52,0.9),rgba(14,10,28,0.95)); border:1px solid rgba(139,92,246,0.25); border-radius:22px; padding:16px; display:flex; flex-direction:column; gap:13px; }
-    .gw-mrow { display:flex; align-items:center; gap:12px; }
-    .gw-mico { width:36px; height:36px; border-radius:11px; display:flex; align-items:center; justify-content:center; }
-    .gw-mico svg { width:18px; height:18px; }
-    .gw-mico.c1 { background:rgba(6,182,212,0.16); color:#22d3ee; }
-    .gw-mico.c2 { background:rgba(244,63,94,0.16); color:#fb7185; }
-    .gw-mico.c3 { background:rgba(249,115,22,0.16); color:#fb923c; }
-    .gw-mval { font-size:1.22rem; font-weight:800; color:#fff; }
-    .gw-mgoal { font-size:0.8rem; color:#94a3b8; margin-left:4px; }
-    .gw-srow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding-top:10px; border-top:1px solid rgba(139,92,246,0.15); font-size:0.8rem; color:#cbd5e1; }
-    .gw-wave { flex:1; height:22px; }
-    .gw-cstage { position:relative; height:150px; display:flex; flex-direction:column; justify-content:flex-end; padding-top:44px; }
-    .gw-tip { position:absolute; top:0; transform:translateX(-50%); background:rgba(18,13,38,0.96); border:1px solid rgba(168,85,247,0.6); border-radius:11px; padding:5px 9px; white-space:nowrap; font-size:0.7rem; color:#fff; z-index:4; pointer-events:none; }
-    .gw-bars { display:flex; align-items:flex-end; justify-content:space-between; height:96px; gap:5px; }
-    .gw-bcol { flex:1; height:100%; display:flex; align-items:flex-end; justify-content:center; cursor:pointer; }
-    .gw-bfill { width:100%; max-width:9px; border-radius:99px; background:rgba(148,163,184,0.22); min-height:8px; }
-    .gw-bcol.active .gw-bfill { background:linear-gradient(180deg,#ec4899 0%,#8b5cf6 52%,#22d3ee 100%); box-shadow:0 0 12px rgba(236,72,153,0.6); }
-    .gw-axis { display:flex; justify-content:space-between; margin-top:6px; font-size:0.68rem; color:#94a3b8; }
-    .gw-grid2 { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
-    .gw-lbox { background:rgba(20,15,38,0.75); border:1px solid rgba(139,92,246,0.18); border-radius:16px; padding:12px; }
-    .gw-llbl { font-size:0.72rem; color:#94a3b8; display:block; margin-bottom:4px; }
-    .gw-lval { font-size:1.12rem; font-weight:800; color:#fff; }
-    .gw-hrow { cursor:pointer; }
-    .gw-hrow.selected-day { border-color:#a855f7 !important; background:rgba(139,92,246,0.15) !important; }
-  `;
+  st.id = 'gw-sinu-areng-css';
+  const rules = [
+    '.gw-areng-wrap { display:flex; flex-direction:column; gap:16px; padding-bottom:90px; color:#f8fafc; }',
+    '.gw-areng-tabs { display:grid; grid-template-columns:repeat(4,1fr); background:rgba(15,20,42,0.85); border:1px solid rgba(139,92,246,0.28); border-radius:14px; padding:4px; gap:4px; }',
+    '.gw-areng-tab { background:transparent; border:1px solid transparent; color:#94a3b8; font:600 0.84rem inherit; padding:9px 4px; border-radius:11px; cursor:pointer; transition:0.2s; }',
+    '.gw-areng-tab.active { background:linear-gradient(135deg,rgba(124,58,237,0.45),rgba(236,72,153,0.35)); border-color:#a855f7; color:#fff; box-shadow:0 0 14px rgba(168,85,247,0.45); }',
+    '.gw-hero-grid { display:grid; grid-template-columns:1.1fr 1fr; gap:14px; align-items:center; background:linear-gradient(160deg,rgba(26,31,66,0.9),rgba(15,20,42,0.95)); border:1px solid rgba(139,92,246,0.26); border-radius:22px; padding:18px 14px; box-shadow:0 12px 30px rgba(0,0,0,0.35); }',
+    '.gw-ring-box { position:relative; width:146px; height:146px; margin:0 auto; display:flex; align-items:center; justify-content:center; }',
+    '.gw-ring-svg { width:146px; height:146px; transform:rotate(-90deg); }',
+    '.gw-ring-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }',
+    '.gw-ring-steps { font-size:1.55rem; font-weight:800; color:#fff; line-height:1.1; }',
+    '.gw-ring-goal { font-size:0.72rem; color:#94a3b8; margin-top:2px; }',
+    '.gw-ring-pct { font-size:0.86rem; font-weight:700; color:#e2e8f0; margin-top:4px; }',
+    '.gw-side-metrics { display:flex; flex-direction:column; gap:11px; }',
+    '.gw-smetric { display:flex; align-items:center; gap:10px; }',
+    '.gw-sm-ico { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }',
+    '.gw-sm-ico svg { width:16px; height:16px; }',
+    '.gw-sm-ico.pink { background:rgba(236,72,153,0.16); color:#f472b6; }',
+    '.gw-sm-ico.cyan { background:rgba(6,182,212,0.16); color:#22d3ee; }',
+    '.gw-sm-ico.blue { background:rgba(99,102,241,0.18); color:#818cf8; }',
+    '.gw-sm-ico.orange { background:rgba(249,115,22,0.16); color:#fb923c; }',
+    '.gw-sm-val { font-size:0.98rem; font-weight:800; color:#fff; }',
+    '.gw-sm-lbl { font-size:0.75rem; color:#94a3b8; margin-left:3px; font-weight:500; }',
+    '.gw-glass-card { background:linear-gradient(160deg,rgba(26,31,66,0.88),rgba(15,20,42,0.94)); border:1px solid rgba(139,92,246,0.25); border-radius:22px; padding:16px; box-shadow:0 10px 26px rgba(0,0,0,0.3); }',
+    '.gw-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }',
+    '.gw-card-title { font-size:0.98rem; font-weight:700; color:#fff; }',
+    '.gw-card-link { font-size:0.76rem; font-weight:600; color:#a855f7; display:flex; align-items:center; gap:2px; }',
+    '.gw-walk-grid { display:grid; grid-template-columns:1.15fr 1fr; gap:14px; align-items:center; }',
+    '.gw-mini-map { height:106px; border-radius:14px; background:radial-gradient(circle at center,#1e293b 0%,#0f172a 100%); border:1px solid rgba(168,85,247,0.32); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }',
+    '.gw-wk-list { display:flex; flex-direction:column; gap:7px; font-size:0.84rem; color:#e2e8f0; }',
+    '.gw-wk-item { display:flex; align-items:center; gap:8px; font-weight:700; }',
+    '.gw-wk-item svg { width:15px; height:15px; color:#c084fc; }',
+    '.gw-wk-grid { display:grid; grid-template-columns:28px 1fr; gap:8px; align-items:end; height:112px; padding-top:8px; }',
+    '.gw-yaxis { display:flex; flex-direction:column; justify-content:space-between; height:88px; font-size:0.66rem; color:#64748b; font-weight:600; padding-bottom:18px; }',
+    '.gw-wbars { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; height:106px; align-items:end; }',
+    '.gw-wcol { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:6px; cursor:pointer; }',
+    '.gw-wbar { width:100%; max-width:14px; border-radius:99px; background:linear-gradient(180deg,#38bdf8 0%,#8b5cf6 55%,#ec4899 100%); min-height:8px; transition:height 0.25s ease; opacity:0.75; }',
+    '.gw-wcol.active .gw-wbar { opacity:1; box-shadow:0 0 14px rgba(236,72,153,0.65); }',
+    '.gw-wday { font-size:0.7rem; font-weight:600; color:#94a3b8; }',
+    '.gw-wcol.active .gw-wday { color:#fff; font-weight:800; }',
+    '.gw-motiv-card { display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,rgba(46,29,89,0.85),rgba(20,24,52,0.95)); border:1px solid rgba(236,72,153,0.35); border-radius:20px; padding:14px 16px; }',
+    '.gw-motiv-ico { width:46px; height:46px; border-radius:50%; background:radial-gradient(circle,#ec4899 0%,#7c3aed 100%); display:flex; align-items:center; justify-content:center; color:#fff; box-shadow:0 0 18px rgba(236,72,153,0.55); flex-shrink:0; }',
+    '.gw-motiv-title { font-size:0.92rem; font-weight:800; color:#fff; margin-bottom:2px; }',
+    '.gw-motiv-sub { font-size:0.76rem; color:#cbd5e1; line-height:1.35; }',
+    '.gw-hrow { cursor:pointer; transition:0.2s; }',
+    '.gw-hrow.selected-day { border-color:#ec4899 !important; background:rgba(124,58,237,0.22) !important; }'
+  ];
+  st.textContent = rules.join('\n');
   document.head.appendChild(st);
 }
 
@@ -132,6 +142,11 @@ export function renderStatsAndHistory() {
   const modal = document.getElementById('statsModal');
   if (!modal) return;
 
+  const titleEl = modal.querySelector('h2, h3, .subview-title');
+  if (titleEl) {
+    titleEl.textContent = 'Sinu areng';
+  }
+
   const hOrig = document.getElementById('historyList');
   const box =
     modal.querySelector('.subview-body') ||
@@ -147,151 +162,99 @@ export function renderStatsAndHistory() {
   }
 
   const strideM = ((state.settings && state.settings.strideCm) || 76) / 100;
-  const goal = (state.settings && state.settings.stepGoal) || 10000;
+  const dailyGoal = (state.settings && state.settings.stepGoal) || 10000;
 
   const tp = todayKey.split('-');
   const todayObj = new Date(Number(tp[0]), Number(tp[1]) - 1, Number(tp[2]));
   const wds = ['P', 'E', 'T', 'K', 'N', 'R', 'L'];
 
-  let pillsHtml = '';
-  for (let off = -5; off <= 1; off++) {
-    const d = new Date(todayObj);
-    d.setDate(d.getDate() + off);
-    const ky = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    const cls = 'gw-pill' + (ky === selectedDateKey ? ' active' : '') + (off > 0 ? ' future' : '');
-    pillsHtml +=
-      '<div class="' + cls + '" data-date="' + ky + '">' +
-      '<span class="gw-pill-n">' + String(d.getDate()).padStart(2, '0') + '</span>' +
-      '<span class="gw-pill-d">' + wds[d.getDay()] + '</span>' +
-      '</div>';
-  }
+  const selRec = daysMap.get(selectedDateKey) || { steps: 0, distanceKm: 0, calories: 0 };
 
-  const selRec = daysMap.get(selectedDateKey) || { steps: 0 };
-  let pSteps = 0;
-  let pGoal = goal;
-  let subTitle = '';
-  const bars = [];
-  let axis = ['00:00', '12:00', '23:59'];
+  let heroSteps = selRec.steps || 0;
+  let heroGoal = dailyGoal;
 
-  if (activePeriod === 'day') {
-    pSteps = selRec.steps || 0;
-    subTitle = prettyDay(selectedDateKey, todayKey);
-    const wList = [0, 0, 0.04, 0.09, 0.14, 0.11, 0.09, 0.13, 0.18, 0.12, 0.07, 0.03, 0, 0];
-    for (let i = 0; i < wList.length; i++) {
-      const st = pSteps > 0 ? Math.round(pSteps * wList[i]) : 0;
-      const h = Math.floor((i * 24) / wList.length);
-      bars.push({
-        label: String(h).padStart(2, '0') + ':00',
-        steps: st,
-        km: +((st * strideM) / 1000).toFixed(2),
-        cal: Math.round(st * 0.04)
-      });
-    }
-  } else if (activePeriod === 'week') {
-    pGoal = goal * 7;
-    subTitle = 'Viimased 7 päeva';
-    for (let i = 6; i >= 0; i--) {
+  if (activePeriod === 'week') {
+    heroSteps = 0;
+    heroGoal = dailyGoal * 7;
+    for (let i = 0; i < 7; i++) {
       const d = new Date(todayObj);
       d.setDate(d.getDate() - i);
       const ky = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
       const r = daysMap.get(ky);
-      const st = r ? r.steps : 0;
-      pSteps += st;
-      bars.push({
-        label: wds[d.getDay()] + ' ' + d.getDate() + '.' + (d.getMonth() + 1),
-        steps: st,
-        km: +((st * strideM) / 1000).toFixed(2),
-        cal: Math.round(st * 0.04)
-      });
+      if (r) heroSteps += r.steps || 0;
     }
-    axis = ['7p tagasi', 'Keskel', 'Täna'];
   } else if (activePeriod === 'month') {
-    pGoal = goal * 30;
-    subTitle = 'Viimased 30 päeva';
-    for (let i = 9; i >= 0; i--) {
-      let st = 0;
-      let lbl = '';
-      for (let j = 0; j < 3; j++) {
-        const d = new Date(todayObj);
-        d.setDate(d.getDate() - (i * 3 + j));
-        const ky = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        const r = daysMap.get(ky);
-        st += r ? r.steps : 0;
-        if (j === 0) lbl = d.getDate() + '.' + (d.getMonth() + 1);
-      }
-      pSteps += st;
-      bars.push({
-        label: lbl,
-        steps: st,
-        km: +((st * strideM) / 1000).toFixed(2),
-        cal: Math.round(st * 0.04)
-      });
+    heroSteps = 0;
+    heroGoal = dailyGoal * 30;
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(todayObj);
+      d.setDate(d.getDate() - i);
+      const ky = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const r = daysMap.get(ky);
+      if (r) heroSteps += r.steps || 0;
     }
-    axis = ['30p tagasi', '15p tagasi', 'Täna'];
-  } else {
-    pGoal = goal * 365;
-    subTitle = 'Aasta ' + tp[0];
-    const mos = ['Jaan', 'Veebr', 'Märts', 'Apr', 'Mai', 'Juuni', 'Juuli', 'Aug', 'Sept', 'Okt', 'Nov', 'Dets'];
-    const mSum = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const allVals = Array.from(daysMap.values());
-    for (let i = 0; i < allVals.length; i++) {
-      const sp = allVals[i].date.split('-');
-      if (sp[0] === tp[0]) {
-        const mi = (Number(sp[1]) || 1) - 1;
-        mSum[mi] += allVals[i].steps || 0;
+  } else if (activePeriod === 'year') {
+    heroSteps = 0;
+    heroGoal = dailyGoal * 365;
+    const allV = Array.from(daysMap.values());
+    for (let i = 0; i < allV.length; i++) {
+      if (allV[i].date.indexOf(tp[0]) === 0) {
+        heroSteps += allV[i].steps || 0;
       }
     }
-    for (let i = 0; i < 12; i++) {
-      const st = mSum[i];
-      pSteps += st;
-      bars.push({
-        label: mos[i],
-        steps: st,
-        km: +((st * strideM) / 1000).toFixed(2),
-        cal: Math.round(st * 0.04)
-      });
-    }
-    axis = ['Jaan', 'Juuni', 'Dets'];
   }
 
-  let maxBar = 1;
-  let peakIdx = Math.floor(bars.length / 2);
-  for (let i = 0; i < bars.length; i++) {
-    if (bars[i].steps > maxBar) {
-      maxBar = bars[i].steps;
-      peakIdx = i;
-    }
-  }
-  if (activeBarIdx < 0 || activeBarIdx >= bars.length) {
-    activeBarIdx = peakIdx;
+  const heroKm = ((heroSteps * strideM) / 1000).toFixed(2);
+  const heroCal = Math.round(heroSteps * 0.04);
+  const heroMin = Math.max(0, Math.round(heroSteps / 100));
+  const pct = Math.min(100, Math.round((heroSteps / Math.max(1, heroGoal)) * 100));
+
+  const ringCircumference = 352;
+  const ringOffset = Math.round(ringCircumference - (pct / 100) * ringCircumference);
+
+  const daySteps = selRec.steps || 0;
+  const dayKm = ((daySteps * strideM) / 1000).toFixed(2);
+  const dayCal = Math.round(daySteps * 0.04);
+  const dayMin = Math.max(0, Math.round(daySteps / 100));
+  const dayTimeFormatted = String(dayMin).padStart(2, '0') + ':00';
+
+  let maxWeekSteps = dailyGoal;
+  const weekItems = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(todayObj);
+    d.setDate(d.getDate() - i);
+    const ky = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const r = daysMap.get(ky);
+    const st = r ? r.steps : 0;
+    if (st > maxWeekSteps) maxWeekSteps = st;
+    weekItems.push({
+      key: ky,
+      day: wds[d.getDay()],
+      steps: st,
+      active: ky === selectedDateKey
+    });
   }
 
-  let barsHtml = '';
-  for (let i = 0; i < bars.length; i++) {
-    const hPct = bars[i].steps > 0 ? Math.max(16, Math.round((bars[i].steps / maxBar) * 100)) : 10;
-    const cls = i === activeBarIdx ? 'gw-bcol active' : 'gw-bcol';
-    barsHtml +=
-      '<div class="' + cls + '" data-bidx="' + i + '">' +
-      '<div class="gw-bfill" style="height:' + hPct + '%;"></div>' +
+  let weekBarsHtml = '';
+  for (let i = 0; i < weekItems.length; i++) {
+    const it = weekItems[i];
+    const hPct = it.steps > 0 ? Math.max(18, Math.round((it.steps / maxWeekSteps) * 100)) : 12;
+    const cName = it.active ? 'gw-wcol active' : 'gw-wcol';
+    weekBarsHtml +=
+      '<div class="' + cName + '" data-wdate="' + it.key + '">' +
+      '<div class="gw-wbar" style="height:' + hPct + '%;"></div>' +
+      '<span class="gw-wday">' + it.day + '</span>' +
       '</div>';
   }
-
-  const actBar = bars[activeBarIdx] || { label: '', steps: 0, km: 0, cal: 0 };
-  const tipLeft = Math.min(80, Math.max(20, Math.round(((activeBarIdx + 0.5) / bars.length) * 100)));
 
   const sortedDays = Array.from(daysMap.values());
   sortedDays.sort(function (a, b) {
     return b.date.localeCompare(a.date);
   });
 
-  let totalStepsAll = 0;
-  let activeDays = 0;
   let histHtml = '';
-
   for (let i = 0; i < sortedDays.length; i++) {
     const r = sortedDays[i];
-    totalStepsAll += r.steps || 0;
-    if ((r.steps || 0) > 0) activeDays++;
     const hCls = r.date === selectedDateKey ? 'history-item gw-hrow selected-day' : 'history-item gw-hrow';
     histHtml +=
       '<div class="' + hCls + '" data-hdate="' + r.date + '">' +
@@ -303,128 +266,110 @@ export function renderStatsAndHistory() {
       '</div>';
   }
 
-  const pKm = ((pSteps * strideM) / 1000).toFixed(2);
-  const gKm = ((pGoal * strideM) / 1000).toFixed(2);
-  const pCal = Math.round(pSteps * 0.04);
-  const gCal = Math.round(pGoal * 0.04);
-  const speed = pSteps > 0 ? '4.8 km/h' : '0.0 km/h';
-  const totalKmAll = ((totalStepsAll * strideM) / 1000).toFixed(1);
-  const streakCount = Math.max(1, activeDays);
+  const htmlParts = [
+    '<div class="gw-areng-wrap">',
+      '<div class="gw-areng-tabs">',
+        '<button type="button" class="gw-areng-tab ' + (activePeriod === 'day' ? 'active' : '') + '" data-period="day">Täna</button>',
+        '<button type="button" class="gw-areng-tab ' + (activePeriod === 'week' ? 'active' : '') + '" data-period="week">Nädal</button>',
+        '<button type="button" class="gw-areng-tab ' + (activePeriod === 'month' ? 'active' : '') + '" data-period="month">Kuu</button>',
+        '<button type="button" class="gw-areng-tab ' + (activePeriod === 'year' ? 'active' : '') + '" data-period="year">Aasta</button>',
+      '</div>',
 
-  box.innerHTML = `
-    <div class="gw-act-wrap">
-      <div class="gw-tabs">
-        <button type="button" class="gw-tab ${activePeriod === 'day' ? 'active' : ''}" data-period="day">Päev</button>
-        <button type="button" class="gw-tab ${activePeriod === 'week' ? 'active' : ''}" data-period="week">Nädal</button>
-        <button type="button" class="gw-tab ${activePeriod === 'month' ? 'active' : ''}" data-period="month">Kuu</button>
-        <button type="button" class="gw-tab ${activePeriod === 'year' ? 'active' : ''}" data-period="year">Aasta</button>
-      </div>
+      '<div class="gw-hero-grid">',
+        '<div class="gw-ring-box">',
+          '<svg class="gw-ring-svg" viewBox="0 0 130 130">',
+            '<defs>',
+              '<linearGradient id="gwArengGrad" x1="0%" y1="0%" x2="100%" y2="100%">',
+                '<stop offset="0%" stop-color="#ec4899" />',
+                '<stop offset="50%" stop-color="#8b5cf6" />',
+                '<stop offset="100%" stop-color="#06b6d4" />',
+              '</linearGradient>',
+            '</defs>',
+            '<circle cx="65" cy="65" r="56" fill="none" stroke="rgba(148,163,184,0.16)" stroke-width="10" />',
+            '<circle cx="65" cy="65" r="56" fill="none" stroke="url(#gwArengGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="352" stroke-dashoffset="' + ringOffset + '" />',
+          '</svg>',
+          '<div class="gw-ring-center">',
+            '<span class="gw-ring-steps">' + heroSteps.toLocaleString('et-EE') + '</span>',
+            '<span class="gw-ring-goal">/ ' + heroGoal.toLocaleString('et-EE') + ' sammu</span>',
+            '<span class="gw-ring-pct">' + pct + '%</span>',
+          '</div>',
+        '</div>',
 
-      <div class="gw-strip">${pillsHtml}</div>
+        '<div class="gw-side-metrics">',
+          '<div class="gw-smetric"><div class="gw-sm-ico pink"><i data-lucide="footprints"></i></div><div><span class="gw-sm-val">' + heroSteps.toLocaleString('et-EE') + '</span><span class="gw-sm-lbl">sammu</span></div></div>',
+          '<div class="gw-smetric"><div class="gw-sm-ico cyan"><i data-lucide="route"></i></div><div><span class="gw-sm-val">' + heroKm + '</span><span class="gw-sm-lbl">km</span></div></div>',
+          '<div class="gw-smetric"><div class="gw-sm-ico blue"><i data-lucide="clock"></i></div><div><span class="gw-sm-val">' + heroMin + '</span><span class="gw-sm-lbl">min</span></div></div>',
+          '<div class="gw-smetric"><div class="gw-sm-ico orange"><i data-lucide="flame"></i></div><div><span class="gw-sm-val">' + heroCal.toLocaleString('et-EE') + '</span><span class="gw-sm-lbl">kcal</span></div></div>',
+        '</div>',
+      '</div>',
 
-      <div class="gw-card">
-        <div class="gw-mrow">
-          <div class="gw-mico c1"><i data-lucide="footprints"></i></div>
-          <div>
-            <span class="gw-mval">${pSteps.toLocaleString('et-EE')}</span>
-            <span class="gw-mgoal">/ ${pGoal.toLocaleString('et-EE')} sammu</span>
-          </div>
-        </div>
-        <div class="gw-mrow">
-          <div class="gw-mico c2"><i data-lucide="map-pin"></i></div>
-          <div>
-            <span class="gw-mval">${pKm}</span>
-            <span class="gw-mgoal">/ ${gKm} km</span>
-          </div>
-        </div>
-        <div class="gw-mrow">
-          <div class="gw-mico c3"><i data-lucide="flame"></i></div>
-          <div>
-            <span class="gw-mval">${pCal.toLocaleString('et-EE')}</span>
-            <span class="gw-mgoal">/ ${gCal.toLocaleString('et-EE')} kcal</span>
-          </div>
-        </div>
-        <div class="gw-srow">
-          <span>Keskm. kiirus</span>
-          <svg class="gw-wave" viewBox="0 0 160 24" preserveAspectRatio="none">
-            <path d="M2,18 C30,17 45,10 70,15 C95,18 110,5 135,11 C145,14 152,7 158,9" fill="none" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round" />
-          </svg>
-          <strong>${speed}</strong>
-        </div>
-      </div>
+      '<div class="gw-glass-card">',
+        '<div class="gw-card-head">',
+          '<span class="gw-card-title">' + prettyDay(selectedDateKey, todayKey) + '</span>',
+          '<span class="gw-card-link">Vaata detaile <i data-lucide="chevron-right" style="width:14px;height:14px;"></i></span>',
+        '</div>',
+        '<div class="gw-walk-grid">',
+          '<div class="gw-mini-map">',
+            '<svg viewBox="0 0 140 90" style="width:100%;height:100%;">',
+              '<line x1="0" y1="25" x2="140" y2="65" stroke="rgba(148,163,184,0.12)" stroke-width="1" />',
+              '<line x1="30" y1="0" x2="90" y2="90" stroke="rgba(148,163,184,0.12)" stroke-width="1" />',
+              '<line x1="0" y1="70" x2="140" y2="15" stroke="rgba(148,163,184,0.12)" stroke-width="1" />',
+              '<polygon points="38,48 65,18 106,32 92,72 52,68" fill="rgba(236,72,153,0.12)" stroke="#ec4899" stroke-width="3" stroke-linejoin="round" />',
+              '<circle cx="38" cy="48" r="5" fill="#38bdf8" stroke="#fff" stroke-width="2" />',
+            '</svg>',
+          '</div>',
+          '<div class="gw-wk-list">',
+            '<div class="gw-wk-item"><i data-lucide="route"></i> <span>' + dayKm + ' km</span></div>',
+            '<div class="gw-wk-item"><i data-lucide="clock"></i> <span>' + dayTimeFormatted + '</span></div>',
+            '<div class="gw-wk-item"><i data-lucide="footprints"></i> <span>' + daySteps.toLocaleString('et-EE') + ' sammu</span></div>',
+            '<div class="gw-wk-item"><i data-lucide="flame"></i> <span>' + dayCal + ' kcal</span></div>',
+          '</div>',
+        '</div>',
+      '</div>',
 
-      <div class="gw-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <strong style="color:#fff;">Statistika</strong>
-          <span style="font-size:0.76rem;color:#c084fc;font-weight:600;">${subTitle}</span>
-        </div>
-        <div class="gw-cstage">
-          <div class="gw-tip" style="left:${tipLeft}%;">
-            <div style="color:#94a3b8;font-size:0.64rem;">${actBar.label}</div>
-            <div>
-              <span style="color:#22d3ee;">●</span> ${actBar.steps} &nbsp;
-              <span style="color:#fb7185;">●</span> ${actBar.km} km &nbsp;
-              <span style="color:#fb923c;">●</span> ${actBar.cal} kcal
-            </div>
-          </div>
-          <div class="gw-bars">${barsHtml}</div>
-        </div>
-        <div class="gw-axis">
-          <span>${axis[0]}</span>
-          <span>${axis[1]}</span>
-          <span>${axis[2]}</span>
-        </div>
-      </div>
+      '<div class="gw-glass-card">',
+        '<div class="gw-card-head">',
+          '<span class="gw-card-title">Nädala ülevaade</span>',
+          '<span class="gw-card-link">Vaata kõiki <i data-lucide="chevron-right" style="width:14px;height:14px;"></i></span>',
+        '</div>',
+        '<div class="gw-wk-grid">',
+          '<div class="gw-yaxis"><span>10K</span><span>5K</span><span>0</span></div>',
+          '<div class="gw-wbars">' + weekBarsHtml + '</div>',
+        '</div>',
+      '</div>',
 
-      <div class="gw-grid2">
-        <div class="gw-lbox">
-          <span class="gw-llbl">Kokku sammud</span>
-          <span class="gw-lval">${totalStepsAll.toLocaleString('et-EE')}</span>
-        </div>
-        <div class="gw-lbox">
-          <span class="gw-llbl">Läbitud distants</span>
-          <span class="gw-lval">${totalKmAll} km</span>
-        </div>
-        <div class="gw-lbox">
-          <span class="gw-llbl">Aktiivne seeria (Streak)</span>
-          <span class="gw-lval">${streakCount} päeva</span>
-        </div>
-        <div class="gw-lbox">
-          <span class="gw-llbl">Salvestatud päevi</span>
-          <span class="gw-lval">${streakCount}</span>
-        </div>
-      </div>
+      '<div class="gw-motiv-card">',
+        '<div class="gw-motiv-ico"><i data-lucide="flame"></i></div>',
+        '<div style="flex:1;">',
+          '<div class="gw-motiv-title">Suurepärane töö!</div>',
+          '<div class="gw-motiv-sub">Oled selle nädala eesmärgi täitmisele hästi lähedal.</div>',
+        '</div>',
+        '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+      '</div>',
 
-      <h4 class="section-subtitle" style="margin-top:4px;">Salvestatud päevade ajalugu</h4>
-      <div id="historyList" class="history-list">${histHtml}</div>
-    </div>
-  `;
+      '<h4 class="section-subtitle" style="margin-top:4px;">Salvestatud päevade ajalugu</h4>',
+      '<div id="historyList" class="history-list">' + histHtml + '</div>',
+    '</div>'
+  ];
+
+  box.innerHTML = htmlParts.join('');
 
   if (window.lucide) {
     window.lucide.createIcons();
   }
 
   box.onclick = function (e) {
-    const tab = e.target.closest('.gw-tab');
+    const tab = e.target.closest('.gw-areng-tab');
     if (tab) {
       activePeriod = tab.getAttribute('data-period') || 'day';
-      activeBarIdx = -1;
       renderStatsAndHistory();
       return;
     }
 
-    const pill = e.target.closest('.gw-pill');
-    if (pill && !pill.classList.contains('future')) {
-      selectedDateKey = pill.getAttribute('data-date');
+    const wcol = e.target.closest('.gw-wcol');
+    if (wcol) {
+      selectedDateKey = wcol.getAttribute('data-wdate');
       activePeriod = 'day';
-      activeBarIdx = -1;
-      renderStatsAndHistory();
-      return;
-    }
-
-    const bcol = e.target.closest('.gw-bcol');
-    if (bcol) {
-      activeBarIdx = parseInt(bcol.getAttribute('data-bidx'), 10) || 0;
       renderStatsAndHistory();
       return;
     }
@@ -433,7 +378,6 @@ export function renderStatsAndHistory() {
     if (hrow) {
       selectedDateKey = hrow.getAttribute('data-hdate');
       activePeriod = 'day';
-      activeBarIdx = -1;
       renderStatsAndHistory();
     }
   };
