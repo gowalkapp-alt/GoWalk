@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, UNIFIED MIDNIGHT INDIGO & FAVICON/PWA
+   GOWALK PRO — 6. MAIN ENTRY POINT, STRIDE CALCULATOR & MIDNIGHT INDIGO UI
    ========================================================================== */
 
 import {
@@ -36,7 +36,7 @@ async function loadStatsModuleSafely() {
   }
 }
 
-// Raster-PNG gradiendi generaator (Samsung Internet Force Dark ei tumenda PNG-pilte!)
+// Raster-PNG gradiendi generaator (püsib Samsung Internetis ja Chrome'is 100% identne)
 function createPngGradient(c1, c2, c3) {
   try {
     const cv = document.createElement('canvas');
@@ -55,7 +55,6 @@ function createPngGradient(c1, c2, c3) {
   }
 }
 
-// Automaatne Favicon.png / GitHubi pildifaili ja PWA Manifesti seadistaja
 function setupFaviconAndPWA() {
   const fallbackGitHubIcon = 'file_000000003a8c820abfebb762ae22beff.png';
   const primaryIcon = 'favicon.png';
@@ -114,6 +113,175 @@ function setupFaviconAndPWA() {
   testImg.src = primaryIcon;
 }
 
+// Sammupikkuse kalkulaatori ehitaja ja ühendaja Seadete lehele
+function setupStrideCalculator(updateHudFn) {
+  const strideInput = document.getElementById('settingStrideLength');
+  if (!strideInput) return;
+
+  const parentCard =
+    strideInput.closest('.setting-item, .setting-row, .settings-card') || strideInput.parentElement;
+
+  if (parentCard && !document.getElementById('openStrideCalcBtn')) {
+    parentCard.style.flexWrap = 'wrap';
+    const trigBtn = document.createElement('button');
+    trigBtn.type = 'button';
+    trigBtn.id = 'openStrideCalcBtn';
+    trigBtn.className = 'gw-stride-calc-trigger';
+    trigBtn.innerHTML = '<i data-lucide="calculator"></i><span>Arvuta oma täpne sammupikkus</span>';
+    parentCard.appendChild(trigBtn);
+  }
+
+  if (!document.getElementById('gwStrideCalcOverlay')) {
+    const ov = document.createElement('div');
+    ov.id = 'gwStrideCalcOverlay';
+    ov.className = 'gw-calc-overlay';
+    ov.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title"><i data-lucide="footprints" style="color:#ec4899;"></i> Sammupikkuse kalkulaator</span>',
+          '<button type="button" class="gw-calc-close" id="gwCalcCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div class="gw-calc-tabs">',
+          '<button type="button" class="gw-calc-tab active" data-cmode="height">Pikkuse järgi</button>',
+          '<button type="button" class="gw-calc-tab" data-cmode="test">10 sammu test</button>',
+        '</div>',
+
+        '<div id="gwCalcHeightPane" style="display:flex;flex-direction:column;gap:12px;">',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Sugu (keskmise valemi koefitsient)</span></span>',
+            '<div class="gw-calc-opts" id="gwCalcGenderGroup">',
+              '<button type="button" class="gw-calc-opt active" data-gender="m">Mees (×0.415)</button>',
+              '<button type="button" class="gw-calc-opt" data-gender="f">Naine (×0.413)</button>',
+            '</div>',
+          '</div>',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Sinu pikkus</span><strong id="gwCalcHeightVal" style="color:#fff;">180 cm</strong></span>',
+            '<input type="range" id="gwCalcHeightSlider" class="gw-rb-slider" min="140" max="210" step="1" value="180" />',
+          '</div>',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Tavapärane kõnnitempo</span></span>',
+            '<div class="gw-calc-opts" id="gwCalcPaceGroup" style="grid-template-columns:repeat(3,1fr);">',
+              '<button type="button" class="gw-calc-opt" data-pace="0.95">Rahulik</button>',
+              '<button type="button" class="gw-calc-opt active" data-pace="1">Tavaline</button>',
+              '<button type="button" class="gw-calc-opt" data-pace="1.06">Kiire</button>',
+            '</div>',
+          '</div>',
+        '</div>',
+
+        '<div id="gwCalcTestPane" style="display:none;flex-direction:column;gap:10px;">',
+          '<p style="font-size:0.78rem;color:#cbd5e1;line-height:1.4;margin:0;">Kõnni 10 loomulikku sammu ja sisesta läbitud vahemaa meetrites (nt 7.6 m):</p>',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>10 sammu pikkus (meetrites)</span></span>',
+            '<input type="number" id="gwCalcTenStepsM" class="gw-calc-input" step="0.1" min="4" max="12" value="7.6" />',
+          '</div>',
+        '</div>',
+
+        '<div class="gw-calc-resbox">',
+          '<div>',
+            '<div style="font-size:0.74rem;color:#cbd5e1;font-weight:600;">Sinu arvutatud sammupikkus</div>',
+            '<div style="font-size:0.68rem;color:#94a3b8;">Kasutatakse km ja sammude arvestuses</div>',
+          '</div>',
+          '<span class="gw-calc-resval" id="gwCalcResultCm">75 cm</span>',
+        '</div>',
+
+        '<button type="button" class="gw-calc-apply" id="gwCalcSaveBtn">Salvesta sammupikkus</button>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(ov);
+
+    let calcMode = 'height';
+    let genderFactor = 0.415;
+    let heightCm = 180;
+    let paceFactor = 1;
+    let calculatedCm = state.settings.strideCm || 76;
+
+    function recomputeStride() {
+      if (calcMode === 'height') {
+        calculatedCm = Math.max(45, Math.min(115, Math.round(heightCm * genderFactor * paceFactor)));
+      } else {
+        const mVal = parseFloat(document.getElementById('gwCalcTenStepsM').value) || 7.6;
+        calculatedCm = Math.max(45, Math.min(115, Math.round((mVal * 100) / 10)));
+      }
+      const resEl = document.getElementById('gwCalcResultCm');
+      if (resEl) resEl.textContent = calculatedCm + ' cm';
+    }
+
+    recomputeStride();
+
+    const hSlider = document.getElementById('gwCalcHeightSlider');
+    if (hSlider) {
+      hSlider.addEventListener('input', function () {
+        heightCm = parseInt(hSlider.value, 10) || 180;
+        document.getElementById('gwCalcHeightVal').textContent = heightCm + ' cm';
+        recomputeStride();
+      });
+    }
+
+    const tenInput = document.getElementById('gwCalcTenStepsM');
+    if (tenInput) {
+      tenInput.addEventListener('input', recomputeStride);
+    }
+
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.closest('#gwCalcCloseBtn')) {
+        ov.classList.remove('open');
+        return;
+      }
+
+      const tab = e.target.closest('.gw-calc-tab');
+      if (tab) {
+        calcMode = tab.getAttribute('data-cmode') || 'height';
+        const tabs = ov.querySelectorAll('.gw-calc-tab');
+        for (let i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+        tab.classList.add('active');
+        document.getElementById('gwCalcHeightPane').style.display = calcMode === 'height' ? 'flex' : 'none';
+        document.getElementById('gwCalcTestPane').style.display = calcMode === 'test' ? 'flex' : 'none';
+        recomputeStride();
+        return;
+      }
+
+      const gBtn = e.target.closest('[data-gender]');
+      if (gBtn) {
+        genderFactor = gBtn.getAttribute('data-gender') === 'f' ? 0.413 : 0.415;
+        const gAll = ov.querySelectorAll('[data-gender]');
+        for (let i = 0; i < gAll.length; i++) gAll[i].classList.remove('active');
+        gBtn.classList.add('active');
+        recomputeStride();
+        return;
+      }
+
+      const pBtn = e.target.closest('[data-pace]');
+      if (pBtn) {
+        paceFactor = parseFloat(pBtn.getAttribute('data-pace')) || 1;
+        const pAll = ov.querySelectorAll('[data-pace]');
+        for (let i = 0; i < pAll.length; i++) pAll[i].classList.remove('active');
+        pBtn.classList.add('active');
+        recomputeStride();
+        return;
+      }
+
+      if (e.target.closest('#gwCalcSaveBtn')) {
+        state.settings.strideCm = calculatedCm;
+        strideInput.value = String(calculatedCm);
+        saveState();
+        if (typeof updateHudFn === 'function') updateHudFn();
+        ov.classList.remove('open');
+      }
+    });
+  }
+
+  const openBtn = document.getElementById('openStrideCalcBtn');
+  if (openBtn) {
+    openBtn.onclick = function () {
+      const ov = document.getElementById('gwStrideCalcOverlay');
+      if (ov) {
+        ov.classList.add('open');
+        if (window.lucide) window.lucide.createIcons();
+      }
+    };
+  }
+}
+
 function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
   setupFaviconAndPWA();
 
@@ -143,28 +311,21 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     const css = [
       ':root, html { color-scheme: only dark !important; }',
       'body, .app-shell, .subview-modal, .sidebar-drawer, .modal-content, .dial-modal-card { background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
-      /* Peida vana Automaatne Trajektoori Generaator täielikult */
       '#generatorModal { display: none !important; visibility: hidden !important; pointer-events: none !important; }',
-      /* Ühtsed Midnight Indigo kaardid kõigis modaalides (Seaded, Abi, Paigalda, Dial) */
-      '.settings-card, .promo-card, .info-card, .guide-card, .install-card, .subview-body > div:not(.gw-areng-wrap) { background: linear-gradient(160deg, rgba(26, 31, 66, 0.9) 0%, rgba(15, 20, 42, 0.95) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.28) !important; border-radius: 22px !important; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35) !important; }',
       '.subview-modal { padding-bottom: 76px !important; }',
-      '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.75) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; color: #fff !important; }',
-      /* Alumine HUD kaart */
+      '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      /* Samsung-kindel PNG neoon-gradient kõigil peamistel tegevusnuppudel */
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, #openGeneratorBtn, #applyPromoBtn, #triggerInstallBtn, #saveAndRouteDialBtn, .dial-mode-btn.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.45) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.42) !important; }',
-      '#startWalkBtn, .gw-rb-cta, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
+      /* PNG neoon-gradient KÕIGIL peamistel nuppudel (sh Seadete Rakenda, Sammuratas ja Kalkulaator) */
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .promo-box button, #settingsModal button.primary-btn, #triggerInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.5) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
+      '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
       '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
-      /* Sammuratta (Dial Modal) ühtlustus */
-      '.dial-step-btn { background: rgba(26, 31, 66, 0.88) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
-      '#saveStepsOnlyBtn { background: rgba(22, 27, 58, 0.9) !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
-      /* Alumine 4-nupuga navigatsiooniriba */
+      '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
+      '#saveStepsOnlyBtn, #dialSaveOnlyBtn { background: rgba(22, 27, 58, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
       '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 3500; padding: 4px 8px; }',
       '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
       '.gw-bnav-btn svg { width: 20px; height: 20px; }',
       '.gw-bnav-btn.active { color: #ec4899 !important; }',
       '.gw-bnav-btn.active svg { stroke: #ec4899 !important; filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.6)); }',
-      /* Loo jalutusring vaade */
       '.gw-rb-modal { position: fixed; inset: 0; background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 70%, #090d1a 100%); z-index: 2800; display: none; flex-direction: column; padding: 18px 18px 88px; overflow-y: auto; }',
       '.gw-rb-modal.open { display: flex; }',
       '.gw-rb-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }',
@@ -195,7 +356,6 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     document.head.appendChild(st);
   }
 
-  // Uuenda Abi & Kasutusjuhendi vana sünkroniseerimise tekst automaatselt
   const helpModal = document.getElementById('helpModal');
   if (helpModal) {
     const cards = helpModal.querySelectorAll('p, div, span, h4, h3');
@@ -373,7 +533,6 @@ function bootGoWalkApp() {
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
 
-  // Eemalda vana generaatori modaal DOM-ist või peida see
   const oldGenModal = document.getElementById('generatorModal');
   if (oldGenModal) {
     oldGenModal.classList.remove('open');
@@ -559,6 +718,7 @@ function bootGoWalkApp() {
     if (modal) {
       modal.classList.add('open');
       setBottomNavActive('settings');
+      if (window.lucide) window.lucide.createIcons();
     }
   }
 
@@ -594,7 +754,6 @@ function bootGoWalkApp() {
     });
   }
 
-  // Püüa kinni KÕIK vajutused parempoolsele sädelevale generaatori nupule
   document.addEventListener(
     'click',
     function (e) {
@@ -1012,6 +1171,7 @@ function bootGoWalkApp() {
     openSettingsView,
     closeAllModalsAndGoHome
   );
+  setupStrideCalculator(updateHudUI);
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
