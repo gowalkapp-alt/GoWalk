@@ -23,9 +23,13 @@ import {
 
 import { setupStepDialModal } from './dial.js';
 import { checkAdminAccess, loadAdminDashboard, initAdminAndPromos } from './admin.js';
+import {
+  renderStatsAndHistory,
+  cleanAndMergeHistoryRecords,
+  initStatsModule
+} from './stats.js';
 
 function bootGoWalkApp() {
-  // Eemalda vanad kellaühenduste ja "+" nupu elemendid
   const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
   if (syncNavBtn) syncNavBtn.remove();
   const syncModalEl = document.getElementById('syncModal');
@@ -33,7 +37,6 @@ function bootGoWalkApp() {
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
 
-  // Initsialiseeri Lucide'i vektoriikoonid kohe alguses
   if (window.lucide) {
     window.lucide.createIcons();
   }
@@ -198,9 +201,7 @@ function bootGoWalkApp() {
   let isWalking = false;
   let walkTimer = null;
   let lastTimerCheckMs = 0;
-  let sessionStartSteps = 0;
 
-  // GPS olekumuutujad (koos siseruumide triivi filtriga)
   let gpsWatchId = null;
   let lastGpsLatLng = null;
   let lastGpsTimestampMs = 0;
@@ -208,11 +209,10 @@ function bootGoWalkApp() {
   let sensorStepsSinceLastGps = 0;
   let livePositionDot = null;
 
-  // Kiirendusanduri (DeviceMotion) 6-sammu rütmipuhvri muutujad
-  const STEP_MIN_INTERVAL_MS = 320; // Vähemalt 320 ms kahe sammu vahel (blokeerib raputamise)
-  const STEP_MAX_INTERVAL_MS = 1200; // Maksimaalselt 1.2 s sammu vahel (muidu rütm katkeb)
-  const STEP_CONFIRM_COUNT = 6; // Vähemalt 6 järjestikust sammu enne loenduri käivitumist
-  const STEP_IMPULSE_THRESHOLD = 1.65; // Tugevam sammuimpulsi lävend (blokeerib voodis liigutamise)
+  const STEP_MIN_INTERVAL_MS = 320;
+  const STEP_MAX_INTERVAL_MS = 1200;
+  const STEP_CONFIRM_COUNT = 6;
+  const STEP_IMPULSE_THRESHOLD = 1.65;
   const STEP_REARM_THRESHOLD = -0.55;
 
   let motionListenerActive = false;
@@ -286,7 +286,6 @@ function bootGoWalkApp() {
     }
   }
 
-  // 1. SAMMURÜTMI PUHVER (Cadence Step Buffer – vähemalt 6 järjestikust sammu)
   function handleDeviceMotion(event) {
     if (!isWalking) return;
 
@@ -320,7 +319,6 @@ function bootGoWalkApp() {
 
     const now = performance.now();
 
-    // Kui eelmisest sammust on möödas üle 1200 ms, on kõnnirütm katkenud -> nulli puhver
     if (lastStepTimestamp > 0 && now - lastStepTimestamp > STEP_MAX_INTERVAL_MS) {
       pendingStepBuffer = 0;
       isCadenceActive = false;
@@ -329,7 +327,6 @@ function bootGoWalkApp() {
     if (linearImpulse > STEP_IMPULSE_THRESHOLD && stepArmed) {
       const deltaMs = now - lastStepTimestamp;
 
-      // Ignoreeri liiga kiireid vibratsioone (< 320 ms)
       if (lastStepTimestamp > 0 && deltaMs < STEP_MIN_INTERVAL_MS) {
         return;
       }
@@ -338,13 +335,11 @@ function bootGoWalkApp() {
 
       if (lastStepTimestamp > 0 && deltaMs >= STEP_MIN_INTERVAL_MS && deltaMs <= STEP_MAX_INTERVAL_MS) {
         if (isCadenceActive) {
-          // Kasutaja juba kõnnib kinnitatud rütmis -> lisa 1 samm
           state.today.steps = (state.today.steps || 0) + 1;
           sensorStepsSinceLastGps += 1;
           updateHudUI();
           saveState();
         } else {
-          // Kogu samme puhvrisse, kuni 6 järjestikust sammu on täis
           pendingStepBuffer += 1;
           if (pendingStepBuffer >= STEP_CONFIRM_COUNT) {
             isCadenceActive = true;
@@ -356,7 +351,6 @@ function bootGoWalkApp() {
           }
         }
       } else {
-        // Esimene potentsiaalne samm uues seerias
         isCadenceActive = false;
         pendingStepBuffer = 1;
       }
@@ -397,14 +391,12 @@ function bootGoWalkApp() {
     isCadenceActive = false;
   }
 
-  // 2. GPS-I SISERUUMIDE UJUMISE (DRIFT) BLOKEERIMINE
   function handleGpsPosition(pos) {
     if (!isWalking || !window.L || !map) return;
 
     const accuracy = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
     const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
 
-    // Uuenda rohelist asukohatäppi kaardil, kui täpsus on mõistlik
     if (accuracy <= 50) {
       if (!livePositionDot) {
         livePositionDot = L.circleMarker(currentLatLng, {
@@ -419,7 +411,6 @@ function bootGoWalkApp() {
       }
     }
 
-    // RANGE FILTER 1: Siseruumides on GPS-i täpsus kehvem kui 16 m -> ära arvesta samme
     if (accuracy > 16) return;
 
     const nowMs = Date.now();
@@ -435,11 +426,9 @@ function bootGoWalkApp() {
 
     if (deltaSec <= 0.5) return;
 
-    // RANGE FILTER 2: Vahemaa peab ületama GPS-i hetke veapiiri (vähemalt 8 meetrit)
     const minRequiredMeters = Math.max(8, accuracy * 0.7);
 
     if (movedMeters < minRequiredMeters) {
-      // Kui 30 sekundi jooksul pole veapiirist kaugemale liigutud, lähtesta ankur, et vältida aeglast triivi
       if (deltaSec > 30) {
         lastGpsLatLng = currentLatLng;
         lastGpsTimestampMs = nowMs;
@@ -447,11 +436,9 @@ function bootGoWalkApp() {
       return;
     }
 
-    // RANGE FILTER 3: Kontrolli, et kiirus vastaks päris kõndimisele (0.6 m/s kuni 3.2 m/s)
     const speedMps = movedMeters / deltaSec;
     const reportedSpeed = pos.coords.speed;
 
-    // Kui seadme enda GPS-spidomeeter ütleb, et seisad paigal (< 0.45 m/s), ignoreeri hüpet
     if (typeof reportedSpeed === 'number' && !Number.isNaN(reportedSpeed) && reportedSpeed < 0.45) {
       lastGpsLatLng = currentLatLng;
       lastGpsTimestampMs = nowMs;
@@ -464,7 +451,6 @@ function bootGoWalkApp() {
       return;
     }
 
-    // Kõik filtrid läbitud: tegemist on reaalse välitingimustes kõndimisega
     lastGpsLatLng = currentLatLng;
     lastGpsTimestampMs = nowMs;
     gpsRemainderMeters += movedMeters;
@@ -475,7 +461,6 @@ function bootGoWalkApp() {
     if (gpsCalculatedSteps > 0) {
       gpsRemainderMeters -= gpsCalculatedSteps * strideMeters;
 
-      // Lisa ainult need sammud, mida kiirendusandur (nt lukus ekraaniga) veel ei lugenud
       const missingGpsSteps = Math.max(0, gpsCalculatedSteps - sensorStepsSinceLastGps);
       sensorStepsSinceLastGps = Math.max(0, sensorStepsSinceLastGps - gpsCalculatedSteps);
 
@@ -516,7 +501,6 @@ function bootGoWalkApp() {
 
       if (isWalking) {
         if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
-        sessionStartSteps = state.today.steps || 0;
         lastGpsLatLng = null;
         lastGpsTimestampMs = 0;
         gpsRemainderMeters = 0;
@@ -551,15 +535,7 @@ function bootGoWalkApp() {
 
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
 
-        const walkedInSession = (state.today.steps || 0) - sessionStartSteps;
-        if (walkedInSession > 0 || state.today.steps > 0) {
-          state.history.unshift({
-            date: new Date().toLocaleString('et-EE'),
-            steps: state.today.steps,
-            distanceKm: state.today.distanceKm,
-            calories: state.today.calories
-          });
-        }
+        cleanAndMergeHistoryRecords();
         saveState();
         updateHudUI();
       }
@@ -567,53 +543,8 @@ function bootGoWalkApp() {
   }
 
   // ==========================================================================
-  // STATISTIKA & SEADED
+  // SEADED & EKSPORT
   // ==========================================================================
-
-  function renderStatsAndHistory() {
-    const historicalSteps = state.history.reduce((sum, item) => sum + (item.steps || 0), 0);
-    const totalSteps = historicalSteps + state.today.steps;
-    const totalKm = ((totalSteps * (state.settings.strideCm / 100)) / 1000).toFixed(1);
-
-    const totalStepsEl = document.getElementById('statTotalSteps');
-    const totalKmEl = document.getElementById('statTotalKm');
-    const totalWalksEl = document.getElementById('statTotalWalks');
-    const streakEl = document.getElementById('statStreak');
-
-    if (totalStepsEl) totalStepsEl.textContent = totalSteps.toLocaleString('et-EE');
-    if (totalKmEl) totalKmEl.textContent = `${totalKm} km`;
-    if (totalWalksEl) {
-      totalWalksEl.textContent = state.history.length + (state.today.steps > 0 ? 1 : 0);
-    }
-    if (streakEl) streakEl.textContent = `${Math.max(1, state.history.length + 1)} päeva`;
-
-    const historyList = document.getElementById('historyList');
-    if (!historyList) return;
-    historyList.innerHTML = '';
-
-    const allRecords = [
-      {
-        date: `Täna (${state.today.date})`,
-        steps: state.today.steps,
-        distanceKm: state.today.distanceKm,
-        calories: state.today.calories
-      },
-      ...state.history
-    ];
-
-    allRecords.forEach(rec => {
-      const row = document.createElement('div');
-      row.className = 'history-item';
-      row.innerHTML = `
-        <div class="history-item-left">
-          <span class="history-date">${rec.date}</span>
-          <span class="history-meta">${Number(rec.distanceKm || 0).toFixed(2)} km • ${rec.calories || 0} kcal</span>
-        </div>
-        <span class="history-steps-badge">${Number(rec.steps || 0).toLocaleString('et-EE')} sammu</span>
-      `;
-      historyList.appendChild(row);
-    });
-  }
 
   const settingStepGoal = document.getElementById('settingStepGoal');
   const settingStrideLength = document.getElementById('settingStrideLength');
@@ -662,6 +593,7 @@ function bootGoWalkApp() {
   }
 
   function refreshAllUI() {
+    initStatsModule();
     renderProfile();
     updateHudUI();
     checkAdminAccess();
