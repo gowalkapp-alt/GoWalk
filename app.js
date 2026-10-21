@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & COLOR-LOCK
+   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & SAMSUNG SVG FIX
    ========================================================================== */
 
 import {
@@ -37,37 +37,23 @@ async function loadStatsModuleSafely() {
 }
 
 function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
-  // 1. Lukusta Samsung Interneti ja Chrome'i jaoks <meta name="color-scheme" content="only dark">
-  let metaScheme = document.querySelector('meta[name="color-scheme"]');
-  if (!metaScheme) {
-    metaScheme = document.createElement('meta');
-    metaScheme.name = 'color-scheme';
-    document.head.appendChild(metaScheme);
-  }
-  metaScheme.content = 'only dark';
-
-  let metaSupported = document.querySelector('meta[name="supported-color-schemes"]');
-  if (!metaSupported) {
-    metaSupported = document.createElement('meta');
-    metaSupported.name = 'supported-color-schemes';
-    document.head.appendChild(metaSupported);
-  }
-  metaSupported.content = 'dark';
-
-  // 2. Globaalsed värvilukustuse ja Midnight Indigo stiilid
   if (!document.getElementById('gw-midnight-indigo-theme')) {
     const st = document.createElement('style');
     st.id = 'gw-midnight-indigo-theme';
+
+    const neonBtnSvg =
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%237c3aed'/%3E%3Cstop offset='52%25' stop-color='%23c026d3'/%3E%3Cstop offset='100%25' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/svg%3E\")";
+
+    const redBtnSvg =
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3ClinearGradient id='r' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23e11d48'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/svg%3E\")";
+
     const css = [
-      ':root, html { color-scheme: only dark !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; }',
-      'body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; background-color: #0f1429 !important; color: #f8fafc !important; color-scheme: only dark !important; forced-color-adjust: none !important; }',
-      'img, svg, canvas, map, .leaflet-container, .leaflet-pane, .leaflet-tile, .leaflet-layer { color-scheme: normal !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; filter: none !important; }',
       'body, .app-shell, .subview-modal, .sidebar-drawer { background: radial-gradient(circle at 50% 12%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
-      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; forced-color-adjust: none !important; }',
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta { background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; color-scheme: only dark !important; forced-color-adjust: none !important; -webkit-forced-color-adjust: none !important; }',
-      '#startWalkBtn.walking-active { background: linear-gradient(90deg, #e11d48 0%, #f43f5e 100%) !important; }',
-      '.map-style-pill.active, .layer-btn.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.45)) !important; border-color: #c084fc !important; color: #fff !important; forced-color-adjust: none !important; }',
-      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; forced-color-adjust: none !important; }',
+      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, #openGeneratorBtn { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; }',
+      '#startWalkBtn.walking-active { background-image: ' + redBtnSvg + ' !important; }',
+      '.map-style-pill.active, .layer-btn.active { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border-color: #f472b6 !important; color: #fff !important; }',
+      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; }',
       '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
       '.gw-bnav-btn svg { width: 20px; height: 20px; }',
       '.gw-bnav-btn.active { color: #ec4899; }',
@@ -80,7 +66,7 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.gw-rb-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }',
       '.gw-rb-tab { background: rgba(22, 27, 58, 0.85); border: 1px solid rgba(139, 92, 246, 0.25); color: #cbd5e1; border-radius: 14px; padding: 10px 6px; font: 600 0.82rem inherit; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }',
       '.gw-rb-tab svg { width: 16px; height: 16px; }',
-      '.gw-rb-tab.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.5), rgba(236, 72, 153, 0.4)); border-color: #c084fc; color: #fff; box-shadow: 0 0 14px rgba(168, 85, 247, 0.4); }',
+      '.gw-rb-tab.active { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border-color: #f472b6; color: #fff; box-shadow: 0 0 14px rgba(168, 85, 247, 0.4); }',
       '.gw-rb-valbox { text-align: center; margin-bottom: 16px; }',
       '.gw-rb-bigval { font-size: 2.1rem; font-weight: 800; color: #fff; }',
       '.gw-rb-unit { font-size: 1rem; color: #cbd5e1; margin-left: 6px; font-weight: 600; }',
@@ -89,14 +75,14 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.gw-rb-sub { font-size: 0.9rem; font-weight: 700; color: #cbd5e1; margin-bottom: 10px; }',
       '.gw-rb-types { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }',
       '.gw-rb-type { display: flex; align-items: center; gap: 14px; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 18px; padding: 12px 14px; cursor: pointer; transition: 0.2s; }',
-      '.gw-rb-type.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.32), rgba(236, 72, 153, 0.22)); border-color: #ec4899; box-shadow: 0 0 16px rgba(236, 72, 153, 0.3); }',
+      '.gw-rb-type.active { background: rgba(124, 58, 237, 0.28); border-color: #ec4899; box-shadow: 0 0 16px rgba(236, 72, 153, 0.3); }',
       '.gw-rb-tico { width: 40px; height: 40px; border-radius: 12px; background: rgba(168, 85, 247, 0.18); color: #e879f9; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }',
       '.gw-rb-tname { font-size: 0.95rem; font-weight: 700; color: #fff; }',
       '.gw-rb-tdesc { font-size: 0.76rem; color: #94a3b8; }',
       '.gw-rb-stops { display: flex; align-items: center; justify-content: space-between; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 16px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.84rem; color: #cbd5e1; font-weight: 600; }',
       '.gw-rb-stepper { display: flex; align-items: center; gap: 12px; }',
       '.gw-rb-sbtn { width: 32px; height: 32px; border-radius: 9px; background: rgba(139, 92, 246, 0.22); border: 1px solid rgba(168, 85, 247, 0.4); color: #fff; font-weight: 700; cursor: pointer; }',
-      '.gw-rb-cta { width: 100%; padding: 15px; font-size: 1rem; font-weight: 800; color: #fff; background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%); border: none; border-radius: 999px; box-shadow: 0 8px 24px rgba(217, 70, 239, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }'
+      '.gw-rb-cta { width: 100%; padding: 15px; font-size: 1rem; font-weight: 800; color: #fff; border: none; border-radius: 999px; box-shadow: 0 8px 24px rgba(217, 70, 239, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }'
     ];
     st.textContent = css.join('\n');
     document.head.appendChild(st);
