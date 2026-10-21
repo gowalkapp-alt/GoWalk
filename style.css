@@ -7,3 +7,51 @@
 @import url('./hud.css');
 @import url('./dial.css');
 @import url('./drawer.css');
+
+/* ==========================================================================
+   BRAUSERITE VÄRVIÜHTLUSTUS (CHROME & SAMSUNG INTERNET IDENTNE KUVA)
+   ========================================================================== */
+
+:root,
+html {
+  color-scheme: only dark !important;
+  forced-color-adjust: none !important;
+  -webkit-forced-color-adjust: none !important;
+}
+
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background-color: #0f1429 !important;
+  color: #f8fafc !important;
+  color-scheme: only dark !important;
+  forced-color-adjust: none !important;
+}
+
+/* Keela kaardikihtide, ikoonide ja graafika automaatne tumendamine */
+img,
+svg,
+canvas,
+map,
+.leaflet-container,
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-layer {
+  color-scheme: normal !important;
+  forced-color-adjust: none !important;
+  -webkit-forced-color-adjust: none !important;
+  filter: none !important;
+}
+
+/* Lukusta neoon-gradiendiga nuppude erksad toonid Samsung Internetis */
+#startWalkBtn,
+.primary-btn,
+.generate-btn,
+.gw-rb-cta,
+.gw-date-pill.active,
+.gw-areng-tab.active {
+  color-scheme: only dark !important;
+  forced-color-adjust: none !important;
+  -webkit-forced-color-adjust: none !important;
+}
