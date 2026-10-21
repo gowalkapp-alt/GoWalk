@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT & HYBRID STEP COUNTER (GPS + SENSORS)
+   GOWALK PRO — 6. MAIN ENTRY POINT & ANTI-DRIFT HYBRID STEP COUNTER
    ========================================================================== */
 
 import {
@@ -191,7 +191,7 @@ function bootGoWalkApp() {
   });
 
   // ==========================================================================
-  // ALUMINE HUD PANEEL & KAHEKORDNE SAMMUDE LUGEMINE (GPS + DEVICEMOTION)
+  // ALUMINE HUD & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS DRIFT FILTER)
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
@@ -200,18 +200,27 @@ function bootGoWalkApp() {
   let lastTimerCheckMs = 0;
   let sessionStartSteps = 0;
 
-  // GPS olekumuutujad
+  // GPS olekumuutujad (koos siseruumide triivi filtriga)
   let gpsWatchId = null;
   let lastGpsLatLng = null;
+  let lastGpsTimestampMs = 0;
   let gpsRemainderMeters = 0;
   let sensorStepsSinceLastGps = 0;
   let livePositionDot = null;
 
-  // Kiirendusanduri (DeviceMotion / Pedometer) olekumuutujad
+  // Kiirendusanduri (DeviceMotion) 6-sammu rütmipuhvri muutujad
+  const STEP_MIN_INTERVAL_MS = 320; // Vähemalt 320 ms kahe sammu vahel (blokeerib raputamise)
+  const STEP_MAX_INTERVAL_MS = 1200; // Maksimaalselt 1.2 s sammu vahel (muidu rütm katkeb)
+  const STEP_CONFIRM_COUNT = 6; // Vähemalt 6 järjestikust sammu enne loenduri käivitumist
+  const STEP_IMPULSE_THRESHOLD = 1.65; // Tugevam sammuimpulsi lävend (blokeerib voodis liigutamise)
+  const STEP_REARM_THRESHOLD = -0.55;
+
   let motionListenerActive = false;
   let gravityMagEMA = 9.81;
   let stepArmed = true;
   let lastStepTimestamp = 0;
+  let pendingStepBuffer = 0;
+  let isCadenceActive = false;
   let wakeLockSentinel = null;
 
   function formatDuration(sec) {
@@ -260,7 +269,6 @@ function bootGoWalkApp() {
     if (durEl) durEl.textContent = formatDuration(state.today.durationSec || 0);
   }
 
-  // Hoia seadme protsessor ja ekraan võimalusel ärkvel
   async function requestPocketWakeLock() {
     if ('wakeLock' in navigator) {
       try {
@@ -278,7 +286,7 @@ function bootGoWalkApp() {
     }
   }
 
-  // Telefoni liikumisanduri (DeviceMotion) sammutuvastus taskus kõndimiseks
+  // 1. SAMMURÜTMI PUHVER (Cadence Step Buffer – vähemalt 6 järjestikust sammu)
   function handleDeviceMotion(event) {
     if (!isWalking) return;
 
@@ -293,7 +301,7 @@ function bootGoWalkApp() {
       typeof accG.z === 'number'
     ) {
       const mag = Math.sqrt(accG.x * accG.x + accG.y * accG.y + accG.z * accG.z);
-      gravityMagEMA = 0.88 * gravityMagEMA + 0.12 * mag;
+      gravityMagEMA = 0.9 * gravityMagEMA + 0.1 * mag;
       linearImpulse = mag - gravityMagEMA;
     } else if (
       accLinear &&
@@ -312,18 +320,49 @@ function bootGoWalkApp() {
 
     const now = performance.now();
 
-    // Sammutipp: kui kiirendusimpulss ületab lävendi ja eelmisest sammust on möödas vähemalt 285 ms
-    if (linearImpulse > 1.25 && stepArmed && now - lastStepTimestamp > 285) {
+    // Kui eelmisest sammust on möödas üle 1200 ms, on kõnnirütm katkenud -> nulli puhver
+    if (lastStepTimestamp > 0 && now - lastStepTimestamp > STEP_MAX_INTERVAL_MS) {
+      pendingStepBuffer = 0;
+      isCadenceActive = false;
+    }
+
+    if (linearImpulse > STEP_IMPULSE_THRESHOLD && stepArmed) {
+      const deltaMs = now - lastStepTimestamp;
+
+      // Ignoreeri liiga kiireid vibratsioone (< 320 ms)
+      if (lastStepTimestamp > 0 && deltaMs < STEP_MIN_INTERVAL_MS) {
+        return;
+      }
+
       stepArmed = false;
+
+      if (lastStepTimestamp > 0 && deltaMs >= STEP_MIN_INTERVAL_MS && deltaMs <= STEP_MAX_INTERVAL_MS) {
+        if (isCadenceActive) {
+          // Kasutaja juba kõnnib kinnitatud rütmis -> lisa 1 samm
+          state.today.steps = (state.today.steps || 0) + 1;
+          sensorStepsSinceLastGps += 1;
+          updateHudUI();
+          saveState();
+        } else {
+          // Kogu samme puhvrisse, kuni 6 järjestikust sammu on täis
+          pendingStepBuffer += 1;
+          if (pendingStepBuffer >= STEP_CONFIRM_COUNT) {
+            isCadenceActive = true;
+            state.today.steps = (state.today.steps || 0) + pendingStepBuffer;
+            sensorStepsSinceLastGps += pendingStepBuffer;
+            pendingStepBuffer = 0;
+            updateHudUI();
+            saveState();
+          }
+        }
+      } else {
+        // Esimene potentsiaalne samm uues seerias
+        isCadenceActive = false;
+        pendingStepBuffer = 1;
+      }
+
       lastStepTimestamp = now;
-
-      state.today.steps = (state.today.steps || 0) + 1;
-      sensorStepsSinceLastGps += 1;
-
-      updateHudUI();
-      saveState();
-    } else if (linearImpulse < -0.45) {
-      // Sammulaine alumine faas: valmis järgmiseks sammuks
+    } else if (linearImpulse < STEP_REARM_THRESHOLD) {
       stepArmed = true;
     }
   }
@@ -341,7 +380,9 @@ function bootGoWalkApp() {
     if (!motionListenerActive) {
       gravityMagEMA = 9.81;
       stepArmed = true;
-      lastStepTimestamp = performance.now();
+      lastStepTimestamp = 0;
+      pendingStepBuffer = 0;
+      isCadenceActive = false;
       window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
       motionListenerActive = true;
     }
@@ -352,64 +393,96 @@ function bootGoWalkApp() {
       window.removeEventListener('devicemotion', handleDeviceMotion);
       motionListenerActive = false;
     }
+    pendingStepBuffer = 0;
+    isCadenceActive = false;
   }
 
-  // Paindlik GPS-i jälgimine ja vahemaa teisendamine sammudeks
+  // 2. GPS-I SISERUUMIDE UJUMISE (DRIFT) BLOKEERIMINE
   function handleGpsPosition(pos) {
     if (!isWalking || !window.L || !map) return;
 
-    const accuracy = pos.coords.accuracy || 20;
-    // Ignoreeri ainult väga ebatäpseid võrgu-hüppeid (> 65 m)
-    if (accuracy > 65) return;
-
+    const accuracy = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
     const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
 
-    // Näita kaardil reaalajas liikumise täppi
-    if (!livePositionDot) {
-      livePositionDot = L.circleMarker(currentLatLng, {
-        radius: 7,
-        color: '#ffffff',
-        weight: 2,
-        fillColor: '#10b981',
-        fillOpacity: 1
-      }).addTo(map);
-    } else {
-      livePositionDot.setLatLng(currentLatLng);
+    // Uuenda rohelist asukohatäppi kaardil, kui täpsus on mõistlik
+    if (accuracy <= 50) {
+      if (!livePositionDot) {
+        livePositionDot = L.circleMarker(currentLatLng, {
+          radius: 7,
+          color: '#ffffff',
+          weight: 2,
+          fillColor: '#10b981',
+          fillOpacity: 1
+        }).addTo(map);
+      } else {
+        livePositionDot.setLatLng(currentLatLng);
+      }
     }
 
-    if (!lastGpsLatLng) {
+    // RANGE FILTER 1: Siseruumides on GPS-i täpsus kehvem kui 16 m -> ära arvesta samme
+    if (accuracy > 16) return;
+
+    const nowMs = Date.now();
+
+    if (!lastGpsLatLng || !lastGpsTimestampMs) {
       lastGpsLatLng = currentLatLng;
+      lastGpsTimestampMs = nowMs;
       return;
     }
 
     const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
+    const deltaSec = (nowMs - lastGpsTimestampMs) / 1000;
 
-    // Kui hüpe on ebaloomulikult suur (> 350 m korraga), lähtesta alguspunkt
-    if (movedMeters > 350) {
-      lastGpsLatLng = currentLatLng;
+    if (deltaSec <= 0.5) return;
+
+    // RANGE FILTER 2: Vahemaa peab ületama GPS-i hetke veapiiri (vähemalt 8 meetrit)
+    const minRequiredMeters = Math.max(8, accuracy * 0.7);
+
+    if (movedMeters < minRequiredMeters) {
+      // Kui 30 sekundi jooksul pole veapiirist kaugemale liigutud, lähtesta ankur, et vältida aeglast triivi
+      if (deltaSec > 30) {
+        lastGpsLatLng = currentLatLng;
+        lastGpsTimestampMs = nowMs;
+      }
       return;
     }
 
-    // Paindlik lävend (alates 1.2 meetrist), et ka lühikesed lõigud ja tänavapöörded läheksid arvesse
-    if (movedMeters >= 1.2) {
+    // RANGE FILTER 3: Kontrolli, et kiirus vastaks päris kõndimisele (0.6 m/s kuni 3.2 m/s)
+    const speedMps = movedMeters / deltaSec;
+    const reportedSpeed = pos.coords.speed;
+
+    // Kui seadme enda GPS-spidomeeter ütleb, et seisad paigal (< 0.45 m/s), ignoreeri hüpet
+    if (typeof reportedSpeed === 'number' && !Number.isNaN(reportedSpeed) && reportedSpeed < 0.45) {
       lastGpsLatLng = currentLatLng;
-      gpsRemainderMeters += movedMeters;
+      lastGpsTimestampMs = nowMs;
+      return;
+    }
 
-      const strideMeters = (state.settings.strideCm || 76) / 100;
-      const gpsCalculatedSteps = Math.floor(gpsRemainderMeters / strideMeters);
+    if (speedMps < 0.6 || speedMps > 3.2) {
+      lastGpsLatLng = currentLatLng;
+      lastGpsTimestampMs = nowMs;
+      return;
+    }
 
-      if (gpsCalculatedSteps > 0) {
-        gpsRemainderMeters -= gpsCalculatedSteps * strideMeters;
+    // Kõik filtrid läbitud: tegemist on reaalse välitingimustes kõndimisega
+    lastGpsLatLng = currentLatLng;
+    lastGpsTimestampMs = nowMs;
+    gpsRemainderMeters += movedMeters;
 
-        // Võrdle anduri sammudega: lisa ainult need sammud, mida andur (nt lukus ekraaniga) veel ei lugenud
-        const missingGpsSteps = Math.max(0, gpsCalculatedSteps - sensorStepsSinceLastGps);
-        sensorStepsSinceLastGps = Math.max(0, sensorStepsSinceLastGps - gpsCalculatedSteps);
+    const strideMeters = (state.settings.strideCm || 76) / 100;
+    const gpsCalculatedSteps = Math.floor(gpsRemainderMeters / strideMeters);
 
-        if (missingGpsSteps > 0) {
-          state.today.steps = (state.today.steps || 0) + missingGpsSteps;
-          saveState();
-          updateHudUI();
-        }
+    if (gpsCalculatedSteps > 0) {
+      gpsRemainderMeters -= gpsCalculatedSteps * strideMeters;
+
+      // Lisa ainult need sammud, mida kiirendusandur (nt lukus ekraaniga) veel ei lugenud
+      const missingGpsSteps = Math.max(0, gpsCalculatedSteps - sensorStepsSinceLastGps);
+      sensorStepsSinceLastGps = Math.max(0, sensorStepsSinceLastGps - gpsCalculatedSteps);
+
+      if (missingGpsSteps > 0) {
+        state.today.steps = (state.today.steps || 0) + missingGpsSteps;
+        saveState();
+        updateHudUI();
       }
     }
   }
@@ -425,7 +498,6 @@ function bootGoWalkApp() {
     }
   }
 
-  // Kui telefon võetakse taskust välja ja ekraan ärkab, uuenda aeg ja WakeLock kohe
   document.addEventListener('visibilitychange', () => {
     if (!isWalking) return;
     syncWalkElapsedTime();
@@ -446,6 +518,7 @@ function bootGoWalkApp() {
         if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
         sessionStartSteps = state.today.steps || 0;
         lastGpsLatLng = null;
+        lastGpsTimestampMs = 0;
         gpsRemainderMeters = 0;
         sensorStepsSinceLastGps = 0;
         lastTimerCheckMs = Date.now();
