@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT & CRASH-PROOF DYNAMIC STATS LOADER
+   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & ROUTE BUILDER
    ========================================================================== */
 
 import {
@@ -24,7 +24,6 @@ import {
 import { setupStepDialModal } from './dial.js';
 import { checkAdminAccess, loadAdminDashboard, initAdminAndPromos } from './admin.js';
 
-// Tõrkekindel stats.js laadija (toetab ka telefoni klaviatuuri "Stats.js" nimekuju)
 let statsModuleCache = null;
 async function loadStatsModuleSafely() {
   if (statsModuleCache) return statsModuleCache;
@@ -32,13 +31,209 @@ async function loadStatsModuleSafely() {
     statsModuleCache = await import('./stats.js');
     return statsModuleCache;
   } catch (err1) {
-    try {
-      statsModuleCache = await import('./Stats.js');
-      return statsModuleCache;
-    } catch (err2) {
-      console.error('Stats mooduli laadimise info:', err1);
-      throw err1;
+    statsModuleCache = await import('./Stats.js');
+    return statsModuleCache;
+  }
+}
+
+function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
+  if (!document.getElementById('gw-midnight-indigo-theme')) {
+    const st = document.createElement('style');
+    st.id = 'gw-midnight-indigo-theme';
+    const css = [
+      'body, .app-shell, .subview-modal, .sidebar-drawer { background: radial-gradient(circle at 50% 12%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
+      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
+      '#startWalkBtn, .primary-btn, .generate-btn { background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%) !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; }',
+      '#startWalkBtn.walking-active { background: linear-gradient(90deg, #e11d48 0%, #f43f5e 100%) !important; }',
+      '.map-style-pill.active, .layer-btn.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.55), rgba(236, 72, 153, 0.45)) !important; border-color: #c084fc !important; color: #fff !important; }',
+      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; }',
+      '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
+      '.gw-bnav-btn svg { width: 20px; height: 20px; }',
+      '.gw-bnav-btn.active { color: #ec4899; }',
+      '.gw-bnav-btn.active svg { stroke: #ec4899; filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.6)); }',
+      '.gw-rb-modal { position: fixed; inset: 0; background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 70%, #090d1a 100%); z-index: 2400; display: none; flex-direction: column; padding: 18px 18px 84px; overflow-y: auto; }',
+      '.gw-rb-modal.open { display: flex; }',
+      '.gw-rb-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }',
+      '.gw-rb-back { width: 38px; height: 38px; border-radius: 50%; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(139, 92, 246, 0.3); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }',
+      '.gw-rb-title { font-size: 1.2rem; font-weight: 800; color: #fff; }',
+      '.gw-rb-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }',
+      '.gw-rb-tab { background: rgba(22, 27, 58, 0.85); border: 1px solid rgba(139, 92, 246, 0.25); color: #cbd5e1; border-radius: 14px; padding: 10px 6px; font: 600 0.82rem inherit; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }',
+      '.gw-rb-tab svg { width: 16px; height: 16px; }',
+      '.gw-rb-tab.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.5), rgba(236, 72, 153, 0.4)); border-color: #c084fc; color: #fff; box-shadow: 0 0 14px rgba(168, 85, 247, 0.4); }',
+      '.gw-rb-valbox { text-align: center; margin-bottom: 16px; }',
+      '.gw-rb-bigval { font-size: 2.1rem; font-weight: 800; color: #fff; }',
+      '.gw-rb-unit { font-size: 1rem; color: #cbd5e1; margin-left: 6px; font-weight: 600; }',
+      '.gw-rb-slider { width: 100%; accent-color: #ec4899; height: 6px; border-radius: 99px; cursor: pointer; margin-bottom: 8px; }',
+      '.gw-rb-marks { display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8; font-weight: 600; margin-bottom: 20px; }',
+      '.gw-rb-sub { font-size: 0.9rem; font-weight: 700; color: #cbd5e1; margin-bottom: 10px; }',
+      '.gw-rb-types { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }',
+      '.gw-rb-type { display: flex; align-items: center; gap: 14px; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 18px; padding: 12px 14px; cursor: pointer; transition: 0.2s; }',
+      '.gw-rb-type.active { background: linear-gradient(135deg, rgba(124, 58, 237, 0.32), rgba(236, 72, 153, 0.22)); border-color: #ec4899; box-shadow: 0 0 16px rgba(236, 72, 153, 0.3); }',
+      '.gw-rb-tico { width: 40px; height: 40px; border-radius: 12px; background: rgba(168, 85, 247, 0.18); color: #e879f9; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }',
+      '.gw-rb-tname { font-size: 0.95rem; font-weight: 700; color: #fff; }',
+      '.gw-rb-tdesc { font-size: 0.76rem; color: #94a3b8; }',
+      '.gw-rb-stops { display: flex; align-items: center; justify-content: space-between; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 16px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.84rem; color: #cbd5e1; font-weight: 600; }',
+      '.gw-rb-stepper { display: flex; align-items: center; gap: 12px; }',
+      '.gw-rb-sbtn { width: 32px; height: 32px; border-radius: 9px; background: rgba(139, 92, 246, 0.22); border: 1px solid rgba(168, 85, 247, 0.4); color: #fff; font-weight: 700; cursor: pointer; }',
+      '.gw-rb-cta { width: 100%; padding: 15px; font-size: 1rem; font-weight: 800; color: #fff; background: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%); border: none; border-radius: 999px; box-shadow: 0 8px 24px rgba(217, 70, 239, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }'
+    ];
+    st.textContent = css.join('\n');
+    document.head.appendChild(st);
+  }
+
+  // Ehita "Loo jalutusring" täisvaade (3. ekraan kavandil)
+  if (!document.getElementById('gwRouteBuilderModal')) {
+    const rb = document.createElement('div');
+    rb.id = 'gwRouteBuilderModal';
+    rb.className = 'gw-rb-modal';
+    rb.innerHTML = [
+      '<div class="gw-rb-head">',
+        '<button type="button" class="gw-rb-back" id="gwRbCloseBtn"><i data-lucide="arrow-left"></i></button>',
+        '<span class="gw-rb-title">Loo jalutusring</span>',
+      '</div>',
+      '<div class="gw-rb-tabs">',
+        '<button type="button" class="gw-rb-tab active" data-mode="steps"><i data-lucide="footprints"></i> Sammud</button>',
+        '<button type="button" class="gw-rb-tab" data-mode="time"><i data-lucide="clock"></i> Aeg</button>',
+        '<button type="button" class="gw-rb-tab" data-mode="dist"><i data-lucide="route"></i> Vahemaa</button>',
+      '</div>',
+      '<div class="gw-rb-valbox">',
+        '<span class="gw-rb-bigval" id="gwRbValText">5000</span>',
+        '<span class="gw-rb-unit" id="gwRbUnitText">sammu</span>',
+      '</div>',
+      '<input type="range" id="gwRbSlider" class="gw-rb-slider" min="1000" max="20000" step="500" value="5000" />',
+      '<div class="gw-rb-marks"><span>1K</span><span>3K</span><span>5K</span><span>10K</span><span>15K</span><span>20K</span></div>',
+      '<div class="gw-rb-sub">Marsruudi tüüp</div>',
+      '<div class="gw-rb-types">',
+        '<div class="gw-rb-type active" data-rtype="loop">',
+          '<div class="gw-rb-tico"><i data-lucide="refresh-cw"></i></div>',
+          '<div style="flex:1;"><div class="gw-rb-tname">Puhas ring</div><div class="gw-rb-tdesc">Algus ja lõpp samas kohas</div></div>',
+          '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+        '</div>',
+        '<div class="gw-rb-type" data-rtype="discover">',
+          '<div class="gw-rb-tico"><i data-lucide="star"></i></div>',
+          '<div style="flex:1;"><div class="gw-rb-tname">Avasta</div><div class="gw-rb-tdesc">Uus ja huvitav marsruut</div></div>',
+          '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+        '</div>',
+        '<div class="gw-rb-type" data-rtype="park">',
+          '<div class="gw-rb-tico"><i data-lucide="trees"></i></div>',
+          '<div style="flex:1;"><div class="gw-rb-tname">Park ja loodus</div><div class="gw-rb-tdesc">Eelista rohealasid</div></div>',
+          '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+        '</div>',
+        '<div class="gw-rb-type" data-rtype="surprise">',
+          '<div class="gw-rb-tico"><i data-lucide="sparkles"></i></div>',
+          '<div style="flex:1;"><div class="gw-rb-tname">Üllata mind</div><div class="gw-rb-tdesc">GoWalk valib sinu eest</div></div>',
+          '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+        '</div>',
+      '</div>',
+      '<div class="gw-rb-stops">',
+        '<span>Peatuste arv (valikuline)</span>',
+        '<div class="gw-rb-stepper">',
+          '<button type="button" class="gw-rb-sbtn" id="gwStopMinus">-</button>',
+          '<strong id="gwStopCount" style="color:#fff;min-width:16px;text-align:center;">3</strong>',
+          '<button type="button" class="gw-rb-sbtn" id="gwStopPlus">+</button>',
+        '</div>',
+      '</div>',
+      '<button type="button" class="gw-rb-cta" id="gwRbCreateBtn"><i data-lucide="sparkles"></i> Loo marsruut</button>'
+    ].join('');
+    document.body.appendChild(rb);
+
+    let rbMode = 'steps';
+    let rbSteps = 5000;
+    let rbStops = 3;
+
+    const sliderEl = document.getElementById('gwRbSlider');
+    const valEl = document.getElementById('gwRbValText');
+    const unitEl = document.getElementById('gwRbUnitText');
+
+    function updateRbDisplay() {
+      const strideM = ((state.settings && state.settings.strideCm) || 76) / 100;
+      if (rbMode === 'steps') {
+        valEl.textContent = rbSteps.toLocaleString('et-EE');
+        unitEl.textContent = 'sammu';
+      } else if (rbMode === 'time') {
+        valEl.textContent = String(Math.max(5, Math.round(rbSteps / 105)));
+        unitEl.textContent = 'min';
+      } else {
+        valEl.textContent = ((rbSteps * strideM) / 1000).toFixed(1);
+        unitEl.textContent = 'km';
+      }
     }
+
+    if (sliderEl) {
+      sliderEl.addEventListener('input', function () {
+        rbSteps = parseInt(sliderEl.value, 10) || 5000;
+        updateRbDisplay();
+      });
+    }
+
+    rb.addEventListener('click', function (e) {
+      if (e.target.closest('#gwRbCloseBtn')) {
+        rb.classList.remove('open');
+        return;
+      }
+      const tab = e.target.closest('.gw-rb-tab');
+      if (tab) {
+        rbMode = tab.getAttribute('data-mode') || 'steps';
+        const allT = rb.querySelectorAll('.gw-rb-tab');
+        for (let i = 0; i < allT.length; i++) allT[i].classList.remove('active');
+        tab.classList.add('active');
+        updateRbDisplay();
+        return;
+      }
+      const tCard = e.target.closest('.gw-rb-type');
+      if (tCard) {
+        const allC = rb.querySelectorAll('.gw-rb-type');
+        for (let i = 0; i < allC.length; i++) allC[i].classList.remove('active');
+        tCard.classList.add('active');
+        return;
+      }
+      if (e.target.closest('#gwStopMinus')) {
+        rbStops = Math.max(1, rbStops - 1);
+        document.getElementById('gwStopCount').textContent = String(rbStops);
+        return;
+      }
+      if (e.target.closest('#gwStopPlus')) {
+        rbStops = Math.min(8, rbStops + 1);
+        document.getElementById('gwStopCount').textContent = String(rbStops);
+        return;
+      }
+      if (e.target.closest('#gwRbCreateBtn')) {
+        rb.classList.remove('open');
+        generateLoopRouteForSteps(rbSteps);
+      }
+    });
+  }
+
+  // Ehita 4 nupuga alumine navigatsiooniriba (Avaleht | Marsruudid | Statistika | Seaded)
+  if (!document.getElementById('gwBottomNavbar')) {
+    const nav = document.createElement('nav');
+    nav.id = 'gwBottomNavbar';
+    nav.className = 'gw-bottom-navbar';
+    nav.innerHTML = [
+      '<button type="button" class="gw-bnav-btn active" data-bnav="home"><i data-lucide="home"></i><span>Avaleht</span></button>',
+      '<button type="button" class="gw-bnav-btn" data-bnav="routes"><i data-lucide="route"></i><span>Marsruudid</span></button>',
+      '<button type="button" class="gw-bnav-btn" data-bnav="stats"><i data-lucide="bar-chart-2"></i><span>Statistika</span></button>',
+      '<button type="button" class="gw-bnav-btn" data-bnav="settings"><i data-lucide="settings"></i><span>Seaded</span></button>'
+    ].join('');
+    document.body.appendChild(nav);
+
+    nav.addEventListener('click', function (e) {
+      const btn = e.target.closest('.gw-bnav-btn');
+      if (!btn) return;
+      const target = btn.getAttribute('data-bnav');
+      const allB = nav.querySelectorAll('.gw-bnav-btn');
+      for (let i = 0; i < allB.length; i++) allB[i].classList.remove('active');
+      btn.classList.add('active');
+
+      if (target === 'home') goHomeFn();
+      if (target === 'routes') openRouteBuilderFn();
+      if (target === 'stats') openStatsFn();
+      if (target === 'settings') openSettingsFn();
+    });
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
   }
 }
 
@@ -54,10 +249,6 @@ function bootGoWalkApp() {
     window.lucide.createIcons();
   }
 
-  // ==========================================================================
-  // KASUTAJAPROFIIL, REGISTREERUMISE TEKST JA PRO / LITE / STANDARD TASEMED
-  // ==========================================================================
-
   function renderProfile() {
     const userNameDisplay = document.getElementById('userNameDisplay');
     const userAvatar = document.getElementById('userAvatar');
@@ -71,7 +262,7 @@ function bootGoWalkApp() {
 
     if (googleAuthText) {
       googleAuthText.textContent = state.profile.email
-        ? `Logi välja (${state.profile.email})`
+        ? 'Logi välja (' + state.profile.email + ')'
         : 'Registreeru või logi sisse';
     }
 
@@ -79,13 +270,13 @@ function bootGoWalkApp() {
       const tierCfg = getTierConfig(state.profile.tier);
       headerProTag.textContent = tierCfg.headerTag;
       headerProTag.classList.remove('tier-pro', 'tier-lite', 'tier-standard');
-      headerProTag.classList.add(`tier-${tierCfg.id}`);
+      headerProTag.classList.add('tier-' + tierCfg.id);
     }
   }
 
   const editNameBtn = document.getElementById('editNameBtn');
   if (editNameBtn) {
-    editNameBtn.addEventListener('click', () => {
+    editNameBtn.addEventListener('click', function () {
       const newName = prompt('Sisesta oma kasutajanimi:', state.profile.name);
       if (newName && newName.trim().length > 0) {
         state.profile.name = newName.trim();
@@ -97,9 +288,9 @@ function bootGoWalkApp() {
 
   const editAvatarBtn = document.getElementById('editAvatarBtn');
   if (editAvatarBtn) {
-    editAvatarBtn.addEventListener('click', () => {
+    editAvatarBtn.addEventListener('click', function () {
       const randomSeed = 'GoWalk_' + Math.floor(Math.random() * 9999);
-      state.profile.avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${randomSeed}`;
+      state.profile.avatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + randomSeed;
       saveState();
       renderProfile();
     });
@@ -107,7 +298,7 @@ function bootGoWalkApp() {
 
   const googleAuthBtn = document.getElementById('googleAuthBtn');
   if (googleAuthBtn) {
-    googleAuthBtn.addEventListener('click', async () => {
+    googleAuthBtn.addEventListener('click', async function () {
       if (!supabaseClient) {
         alert('Pilveühendus luuakse, proovi hetke pärast uuesti.');
         return;
@@ -115,7 +306,7 @@ function bootGoWalkApp() {
 
       if (state.profile.email) {
         const confirmLogout = confirm(
-          `Oled sisse logitud kui ${state.profile.email}.\n\nKas soovid välja logida?`
+          'Oled sisse logitud kui ' + state.profile.email + '.\n\nKas soovid välja logida?'
         );
         if (confirmLogout) {
           await performFullLogout();
@@ -124,18 +315,15 @@ function bootGoWalkApp() {
       }
 
       try {
-        const { error } = await supabaseClient.auth.signInWithOAuth({
+        const res = await supabaseClient.auth.signInWithOAuth({
           provider: 'google',
           options: {
             redirectTo: window.location.origin + window.location.pathname
           }
         });
-        if (error) throw error;
+        if (res.error) throw res.error;
       } catch (err) {
-        const manualEmail = prompt(
-          'Registreeru või logi sisse oma e-posti aadressiga:',
-          ''
-        );
+        const manualEmail = prompt('Registreeru või logi sisse oma e-posti aadressiga:', '');
         if (manualEmail && manualEmail.includes('@')) {
           const cleanEmail = manualEmail.trim().toLowerCase();
           await switchUserContext(
@@ -149,10 +337,6 @@ function bootGoWalkApp() {
       }
     });
   }
-
-  // ==========================================================================
-  // LIUGMENÜÜ (DRAWER) & ALAMVAADETE NAVIGATSIOON
-  // ==========================================================================
 
   const sidebarDrawer = document.getElementById('sidebarDrawer');
   const drawerOverlay = document.getElementById('drawerOverlay');
@@ -175,49 +359,95 @@ function bootGoWalkApp() {
   if (closeDrawerBtn) closeDrawerBtn.addEventListener('click', closeDrawer);
   if (drawerOverlay) drawerOverlay.addEventListener('click', closeDrawer);
 
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const targetId = item.getAttribute('data-target');
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
+  function closeAllModalsAndGoHome() {
+    closeDrawer();
+    for (let i = 0; i < subviewModals.length; i++) {
+      subviewModals[i].classList.remove('open');
+    }
+    const rbModal = document.getElementById('gwRouteBuilderModal');
+    if (rbModal) rbModal.classList.remove('open');
+    invalidateMapSize();
+  }
+
+  function openRouteBuilderView() {
+    closeDrawer();
+    for (let i = 0; i < subviewModals.length; i++) {
+      subviewModals[i].classList.remove('open');
+    }
+    const rbModal = document.getElementById('gwRouteBuilderModal');
+    if (rbModal) {
+      const missing = getMissingSteps();
+      const defSteps = missing >= 1000 ? Math.min(20000, Math.round(missing / 500) * 500) : 5000;
+      const sliderEl = document.getElementById('gwRbSlider');
+      const valEl = document.getElementById('gwRbValText');
+      if (sliderEl) sliderEl.value = String(defSteps);
+      if (valEl) valEl.textContent = defSteps.toLocaleString('et-EE');
+      rbModal.classList.add('open');
+    }
+  }
+
+  function openStatsView() {
+    closeAllModalsAndGoHome();
+    const modal = document.getElementById('statsModal');
+    if (modal) {
+      loadStatsModuleSafely()
+        .then(function (mod) {
+          if (mod && typeof mod.renderStatsAndHistory === 'function') {
+            mod.renderStatsAndHistory();
+          }
+        })
+        .catch(function (err) {
+          console.error(err);
+        });
+      modal.classList.add('open');
+    }
+  }
+
+  function openSettingsView() {
+    closeAllModalsAndGoHome();
+    const modal = document.getElementById('settingsModal');
+    if (modal) modal.classList.add('open');
+  }
+
+  for (let i = 0; i < navItems.length; i++) {
+    navItems[i].addEventListener('click', function () {
+      const targetId = this.getAttribute('data-target');
+      for (let j = 0; j < navItems.length; j++) navItems[j].classList.remove('active');
+      this.classList.add('active');
       closeDrawer();
 
-      subviewModals.forEach(m => m.classList.remove('open'));
+      for (let k = 0; k < subviewModals.length; k++) subviewModals[k].classList.remove('open');
 
-      if (targetId !== 'home') {
+      if (targetId === 'statsModal') {
+        openStatsView();
+      } else if (targetId !== 'home') {
         const modal = document.getElementById(targetId);
         if (modal) {
-          if (targetId === 'statsModal') {
-            loadStatsModuleSafely()
-              .then(mod => {
-                if (mod && typeof mod.renderStatsAndHistory === 'function') {
-                  mod.renderStatsAndHistory();
-                }
-              })
-              .catch(err => {
-                alert(
-                  'Statistika mooduli (stats.js) viga: ' +
-                    (err && err.message ? err.message : 'Faili ei leitud')
-                );
-              });
-          }
           if (targetId === 'adminModal') loadAdminDashboard();
           modal.classList.add('open');
         }
       } else {
-        invalidateMapSize();
+        closeAllModalsAndGoHome();
       }
     });
-  });
+  }
 
-  document.querySelectorAll('.close-subview').forEach(btn => {
-    btn.addEventListener('click', () => {
-      subviewModals.forEach(m => m.classList.remove('open'));
-      navItems.forEach(n => n.classList.remove('active'));
-      const homeNav = document.querySelector('.nav-item[data-target="home"]');
-      if (homeNav) homeNav.classList.add('active');
+  const closeBtns = document.querySelectorAll('.close-subview');
+  for (let i = 0; i < closeBtns.length; i++) {
+    closeBtns[i].addEventListener('click', function () {
+      closeAllModalsAndGoHome();
     });
-  });
+  }
+
+  // Suuna ka parempoolne sädelev generaatori nupp uuele "Loo jalutusring" vaatele
+  const oldGenTrigger = document.getElementById('openGeneratorBtn') || document.querySelector('[data-action="generate"]');
+  if (oldGenTrigger) {
+    oldGenTrigger.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openRouteBuilderView();
+    }, true);
+  }
 
   // ==========================================================================
   // ALUMINE HUD & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS DRIFT FILTER)
@@ -227,7 +457,6 @@ function bootGoWalkApp() {
   let isWalking = false;
   let walkTimer = null;
   let lastTimerCheckMs = 0;
-  let sessionStartSteps = 0;
 
   let gpsWatchId = null;
   let lastGpsLatLng = null;
@@ -255,7 +484,7 @@ function bootGoWalkApp() {
     const hrs = Math.floor(totalSec / 3600);
     const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
     const s = String(totalSec % 60).padStart(2, '0');
-    return hrs > 0 ? `${hrs}:${m}:${s}` : `${m}:${s}`;
+    return hrs > 0 ? hrs + ':' + m + ':' + s : m + ':' + s;
   }
 
   function updateHudUI() {
@@ -272,12 +501,11 @@ function bootGoWalkApp() {
 
     const hintBadge = document.getElementById('hudMissingHintBadge');
     if (hintBadge) {
-      hintBadge.textContent =
-        missing > 0 ? `Puudu ${missing.toLocaleString('et-EE')}` : 'Täidetud ✓';
+      hintBadge.textContent = missing > 0 ? 'Puudu ' + missing.toLocaleString('et-EE') : 'Täidetud ✓';
     }
 
     const pctEl = document.getElementById('stepPercentText');
-    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (pctEl) pctEl.textContent = pct + '%';
 
     const offset = RING_CIRCUMFERENCE - (pct / 100) * RING_CIRCUMFERENCE;
     const ringEl = document.getElementById('stepRingProgress');
@@ -320,25 +548,13 @@ function bootGoWalkApp() {
     const accLinear = event.acceleration;
     let linearImpulse = 0;
 
-    if (
-      accG &&
-      typeof accG.x === 'number' &&
-      typeof accG.y === 'number' &&
-      typeof accG.z === 'number'
-    ) {
+    if (accG && typeof accG.x === 'number') {
       const mag = Math.sqrt(accG.x * accG.x + accG.y * accG.y + accG.z * accG.z);
       gravityMagEMA = 0.9 * gravityMagEMA + 0.1 * mag;
       linearImpulse = mag - gravityMagEMA;
-    } else if (
-      accLinear &&
-      typeof accLinear.x === 'number' &&
-      typeof accLinear.y === 'number' &&
-      typeof accLinear.z === 'number'
-    ) {
+    } else if (accLinear && typeof accLinear.x === 'number') {
       linearImpulse = Math.sqrt(
-        accLinear.x * accLinear.x +
-          accLinear.y * accLinear.y +
-          accLinear.z * accLinear.z
+        accLinear.x * accLinear.x + accLinear.y * accLinear.y + accLinear.z * accLinear.z
       );
     } else {
       return;
@@ -353,10 +569,7 @@ function bootGoWalkApp() {
 
     if (linearImpulse > STEP_IMPULSE_THRESHOLD && stepArmed) {
       const deltaMs = now - lastStepTimestamp;
-
-      if (lastStepTimestamp > 0 && deltaMs < STEP_MIN_INTERVAL_MS) {
-        return;
-      }
+      if (lastStepTimestamp > 0 && deltaMs < STEP_MIN_INTERVAL_MS) return;
 
       stepArmed = false;
 
@@ -390,7 +603,6 @@ function bootGoWalkApp() {
 
   async function startMotionStepSensor() {
     if (typeof window.DeviceMotionEvent === 'undefined') return;
-
     try {
       if (typeof DeviceMotionEvent.requestPermission === 'function') {
         const perm = await DeviceMotionEvent.requestPermission();
@@ -430,7 +642,7 @@ function bootGoWalkApp() {
           radius: 7,
           color: '#ffffff',
           weight: 2,
-          fillColor: '#10b981',
+          fillColor: '#38bdf8',
           fillOpacity: 1
         }).addTo(map);
       } else {
@@ -441,7 +653,6 @@ function bootGoWalkApp() {
     if (accuracy > 16) return;
 
     const nowMs = Date.now();
-
     if (!lastGpsLatLng || !lastGpsTimestampMs) {
       lastGpsLatLng = currentLatLng;
       lastGpsTimestampMs = nowMs;
@@ -450,11 +661,9 @@ function bootGoWalkApp() {
 
     const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
     const deltaSec = (nowMs - lastGpsTimestampMs) / 1000;
-
     if (deltaSec <= 0.5) return;
 
     const minRequiredMeters = Math.max(8, accuracy * 0.7);
-
     if (movedMeters < minRequiredMeters) {
       if (deltaSec > 30) {
         lastGpsLatLng = currentLatLng;
@@ -465,7 +674,6 @@ function bootGoWalkApp() {
 
     const speedMps = movedMeters / deltaSec;
     const reportedSpeed = pos.coords.speed;
-
     if (typeof reportedSpeed === 'number' && !Number.isNaN(reportedSpeed) && reportedSpeed < 0.45) {
       lastGpsLatLng = currentLatLng;
       lastGpsTimestampMs = nowMs;
@@ -487,7 +695,6 @@ function bootGoWalkApp() {
 
     if (gpsCalculatedSteps > 0) {
       gpsRemainderMeters -= gpsCalculatedSteps * strideMeters;
-
       const missingGpsSteps = Math.max(0, gpsCalculatedSteps - sensorStepsSinceLastGps);
       sensorStepsSinceLastGps = Math.max(0, sensorStepsSinceLastGps - gpsCalculatedSteps);
 
@@ -510,7 +717,7 @@ function bootGoWalkApp() {
     }
   }
 
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange', function () {
     if (!isWalking) return;
     syncWalkElapsedTime();
     if (document.visibilityState === 'visible') {
@@ -522,13 +729,12 @@ function bootGoWalkApp() {
   const startWalkText = document.getElementById('startWalkText');
 
   if (startWalkBtn) {
-    startWalkBtn.addEventListener('click', async () => {
+    startWalkBtn.addEventListener('click', async function () {
       isWalking = !isWalking;
       startWalkBtn.classList.toggle('walking-active', isWalking);
 
       if (isWalking) {
         if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
-        sessionStartSteps = state.today.steps || 0;
         lastGpsLatLng = null;
         lastGpsTimestampMs = 0;
         gpsRemainderMeters = 0;
@@ -543,7 +749,7 @@ function bootGoWalkApp() {
         if (navigator.geolocation && window.L) {
           gpsWatchId = navigator.geolocation.watchPosition(
             handleGpsPosition,
-            err => console.warn('GPS jälgimise info:', err.message),
+            function () {},
             { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
           );
         }
@@ -564,14 +770,14 @@ function bootGoWalkApp() {
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
 
         loadStatsModuleSafely()
-          .then(mod => {
+          .then(function (mod) {
             if (mod && typeof mod.cleanAndMergeHistoryRecords === 'function') {
               mod.cleanAndMergeHistoryRecords();
             }
             saveState();
             updateHudUI();
           })
-          .catch(() => {
+          .catch(function () {
             saveState();
             updateHudUI();
           });
@@ -579,17 +785,13 @@ function bootGoWalkApp() {
     });
   }
 
-  // ==========================================================================
-  // SEADED & EKSPORT
-  // ==========================================================================
-
   const settingStepGoal = document.getElementById('settingStepGoal');
   const settingStrideLength = document.getElementById('settingStrideLength');
   const settingMapStyle = document.getElementById('settingMapStyle');
 
   if (settingStepGoal) {
     settingStepGoal.value = state.settings.stepGoal;
-    settingStepGoal.addEventListener('change', e => {
+    settingStepGoal.addEventListener('change', function (e) {
       state.settings.stepGoal = Math.max(1000, parseInt(e.target.value, 10) || 10000);
       saveState();
       updateHudUI();
@@ -598,7 +800,7 @@ function bootGoWalkApp() {
 
   if (settingStrideLength) {
     settingStrideLength.value = state.settings.strideCm;
-    settingStrideLength.addEventListener('change', e => {
+    settingStrideLength.addEventListener('change', function (e) {
       state.settings.strideCm = Math.max(40, parseInt(e.target.value, 10) || 76);
       saveState();
       updateHudUI();
@@ -607,21 +809,21 @@ function bootGoWalkApp() {
 
   if (settingMapStyle) {
     settingMapStyle.value = state.settings.mapLayer;
-    settingMapStyle.addEventListener('change', e => {
+    settingMapStyle.addEventListener('change', function (e) {
       switchMapLayer(e.target.value);
     });
   }
 
   const exportBtn = document.getElementById('exportDataBtn');
   if (exportBtn) {
-    exportBtn.addEventListener('click', () => {
+    exportBtn.addEventListener('click', function () {
       const dataStr =
         'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
       const dlAnchor = document.createElement('a');
       dlAnchor.setAttribute('href', dataStr);
       dlAnchor.setAttribute(
         'download',
-        `gowalk_ajalugu_${new Date().toISOString().slice(0, 10)}.json`
+        'gowalk_ajalugu_' + new Date().toISOString().slice(0, 10) + '.json'
       );
       document.body.appendChild(dlAnchor);
       dlAnchor.click();
@@ -634,17 +836,20 @@ function bootGoWalkApp() {
     updateHudUI();
     checkAdminAccess();
     loadStatsModuleSafely()
-      .then(mod => {
+      .then(function (mod) {
         if (mod && typeof mod.initStatsModule === 'function') {
           mod.initStatsModule();
         }
       })
-      .catch(() => {});
+      .catch(function () {});
   }
 
-  // ==========================================================================
-  // ALGLAADIMINE (KÕIK MOODULID JÄRJEST)
-  // ==========================================================================
+  applyMidnightIndigoThemeAndNav(
+    openRouteBuilderView,
+    openStatsView,
+    openSettingsView,
+    closeAllModalsAndGoHome
+  );
   setupStepDialModal(updateHudUI, generateLoopRouteForSteps);
   initMapAndRouting(updateHudUI);
   initAdminAndPromos(renderProfile);
