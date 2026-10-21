@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT & MODULE ORCHESTRATOR
+   GOWALK PRO — 6. MAIN ENTRY POINT & HYBRID STEP COUNTER (GPS + SENSORS)
    ========================================================================== */
 
 import {
@@ -24,7 +24,7 @@ import {
 import { setupStepDialModal } from './dial.js';
 import { checkAdminAccess, loadAdminDashboard, initAdminAndPromos } from './admin.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+function bootGoWalkApp() {
   // Eemalda vanad kellaühenduste ja "+" nupu elemendid
   const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
   if (syncNavBtn) syncNavBtn.remove();
@@ -53,14 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (userAvatar) userAvatar.src = state.profile.avatar;
     if (userPlanBadge) userPlanBadge.textContent = state.profile.plan || 'Standard konto';
 
-    // Uuendatud sisselogimise ja registreerumise tekst liugmenüüs
     if (googleAuthText) {
       googleAuthText.textContent = state.profile.email
         ? `Logi välja (${state.profile.email})`
         : 'Registreeru või logi sisse';
     }
 
-    // Ülemise päise paketi märgis vastavalt kontotasemele (PRO / LITE / STD)
     if (headerProTag) {
       const tierCfg = getTierConfig(state.profile.tier);
       headerProTag.textContent = tierCfg.headerTag;
@@ -193,19 +191,35 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================================================
-  // ALUMINE HUD PANEEL & PÄRIS GPS-KÕNDIMINE
+  // ALUMINE HUD PANEEL & KAHEKORDNE SAMMUDE LUGEMINE (GPS + DEVICEMOTION)
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
   let isWalking = false;
   let walkTimer = null;
+  let lastTimerCheckMs = 0;
+  let sessionStartSteps = 0;
+
+  // GPS olekumuutujad
   let gpsWatchId = null;
   let lastGpsLatLng = null;
+  let gpsRemainderMeters = 0;
+  let sensorStepsSinceLastGps = 0;
+  let livePositionDot = null;
+
+  // Kiirendusanduri (DeviceMotion / Pedometer) olekumuutujad
+  let motionListenerActive = false;
+  let gravityMagEMA = 9.81;
+  let stepArmed = true;
+  let lastStepTimestamp = 0;
+  let wakeLockSentinel = null;
 
   function formatDuration(sec) {
-    const m = String(Math.floor(sec / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    return `${m}:${s}`;
+    const totalSec = Math.max(0, Math.floor(sec || 0));
+    const hrs = Math.floor(totalSec / 3600);
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return hrs > 0 ? `${hrs}:${m}:${s}` : `${m}:${s}`;
   }
 
   function updateHudUI() {
@@ -246,61 +260,235 @@ document.addEventListener('DOMContentLoaded', () => {
     if (durEl) durEl.textContent = formatDuration(state.today.durationSec || 0);
   }
 
+  // Hoia seadme protsessor ja ekraan võimalusel ärkvel
+  async function requestPocketWakeLock() {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+      } catch (e) {}
+    }
+  }
+
+  async function releasePocketWakeLock() {
+    if (wakeLockSentinel) {
+      try {
+        await wakeLockSentinel.release();
+      } catch (e) {}
+      wakeLockSentinel = null;
+    }
+  }
+
+  // Telefoni liikumisanduri (DeviceMotion) sammutuvastus taskus kõndimiseks
+  function handleDeviceMotion(event) {
+    if (!isWalking) return;
+
+    const accG = event.accelerationIncludingGravity;
+    const accLinear = event.acceleration;
+    let linearImpulse = 0;
+
+    if (
+      accG &&
+      typeof accG.x === 'number' &&
+      typeof accG.y === 'number' &&
+      typeof accG.z === 'number'
+    ) {
+      const mag = Math.sqrt(accG.x * accG.x + accG.y * accG.y + accG.z * accG.z);
+      gravityMagEMA = 0.88 * gravityMagEMA + 0.12 * mag;
+      linearImpulse = mag - gravityMagEMA;
+    } else if (
+      accLinear &&
+      typeof accLinear.x === 'number' &&
+      typeof accLinear.y === 'number' &&
+      typeof accLinear.z === 'number'
+    ) {
+      linearImpulse = Math.sqrt(
+        accLinear.x * accLinear.x +
+          accLinear.y * accLinear.y +
+          accLinear.z * accLinear.z
+      );
+    } else {
+      return;
+    }
+
+    const now = performance.now();
+
+    // Sammutipp: kui kiirendusimpulss ületab lävendi ja eelmisest sammust on möödas vähemalt 285 ms
+    if (linearImpulse > 1.25 && stepArmed && now - lastStepTimestamp > 285) {
+      stepArmed = false;
+      lastStepTimestamp = now;
+
+      state.today.steps = (state.today.steps || 0) + 1;
+      sensorStepsSinceLastGps += 1;
+
+      updateHudUI();
+      saveState();
+    } else if (linearImpulse < -0.45) {
+      // Sammulaine alumine faas: valmis järgmiseks sammuks
+      stepArmed = true;
+    }
+  }
+
+  async function startMotionStepSensor() {
+    if (typeof window.DeviceMotionEvent === 'undefined') return;
+
+    try {
+      if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        const perm = await DeviceMotionEvent.requestPermission();
+        if (perm !== 'granted') return;
+      }
+    } catch (e) {}
+
+    if (!motionListenerActive) {
+      gravityMagEMA = 9.81;
+      stepArmed = true;
+      lastStepTimestamp = performance.now();
+      window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
+      motionListenerActive = true;
+    }
+  }
+
+  function stopMotionStepSensor() {
+    if (motionListenerActive) {
+      window.removeEventListener('devicemotion', handleDeviceMotion);
+      motionListenerActive = false;
+    }
+  }
+
+  // Paindlik GPS-i jälgimine ja vahemaa teisendamine sammudeks
+  function handleGpsPosition(pos) {
+    if (!isWalking || !window.L || !map) return;
+
+    const accuracy = pos.coords.accuracy || 20;
+    // Ignoreeri ainult väga ebatäpseid võrgu-hüppeid (> 65 m)
+    if (accuracy > 65) return;
+
+    const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+    // Näita kaardil reaalajas liikumise täppi
+    if (!livePositionDot) {
+      livePositionDot = L.circleMarker(currentLatLng, {
+        radius: 7,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: '#10b981',
+        fillOpacity: 1
+      }).addTo(map);
+    } else {
+      livePositionDot.setLatLng(currentLatLng);
+    }
+
+    if (!lastGpsLatLng) {
+      lastGpsLatLng = currentLatLng;
+      return;
+    }
+
+    const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
+
+    // Kui hüpe on ebaloomulikult suur (> 350 m korraga), lähtesta alguspunkt
+    if (movedMeters > 350) {
+      lastGpsLatLng = currentLatLng;
+      return;
+    }
+
+    // Paindlik lävend (alates 1.2 meetrist), et ka lühikesed lõigud ja tänavapöörded läheksid arvesse
+    if (movedMeters >= 1.2) {
+      lastGpsLatLng = currentLatLng;
+      gpsRemainderMeters += movedMeters;
+
+      const strideMeters = (state.settings.strideCm || 76) / 100;
+      const gpsCalculatedSteps = Math.floor(gpsRemainderMeters / strideMeters);
+
+      if (gpsCalculatedSteps > 0) {
+        gpsRemainderMeters -= gpsCalculatedSteps * strideMeters;
+
+        // Võrdle anduri sammudega: lisa ainult need sammud, mida andur (nt lukus ekraaniga) veel ei lugenud
+        const missingGpsSteps = Math.max(0, gpsCalculatedSteps - sensorStepsSinceLastGps);
+        sensorStepsSinceLastGps = Math.max(0, sensorStepsSinceLastGps - gpsCalculatedSteps);
+
+        if (missingGpsSteps > 0) {
+          state.today.steps = (state.today.steps || 0) + missingGpsSteps;
+          saveState();
+          updateHudUI();
+        }
+      }
+    }
+  }
+
+  function syncWalkElapsedTime() {
+    if (!isWalking || !lastTimerCheckMs) return;
+    const nowMs = Date.now();
+    const deltaSec = Math.floor((nowMs - lastTimerCheckMs) / 1000);
+    if (deltaSec >= 1) {
+      state.today.durationSec = (state.today.durationSec || 0) + deltaSec;
+      lastTimerCheckMs += deltaSec * 1000;
+      updateHudUI();
+    }
+  }
+
+  // Kui telefon võetakse taskust välja ja ekraan ärkab, uuenda aeg ja WakeLock kohe
+  document.addEventListener('visibilitychange', () => {
+    if (!isWalking) return;
+    syncWalkElapsedTime();
+    if (document.visibilityState === 'visible') {
+      requestPocketWakeLock();
+    }
+  });
+
   const startWalkBtn = document.getElementById('startWalkBtn');
   const startWalkText = document.getElementById('startWalkText');
 
   if (startWalkBtn) {
-    startWalkBtn.addEventListener('click', () => {
+    startWalkBtn.addEventListener('click', async () => {
       isWalking = !isWalking;
       startWalkBtn.classList.toggle('walking-active', isWalking);
 
       if (isWalking) {
         if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
+        sessionStartSteps = state.today.steps || 0;
         lastGpsLatLng = null;
+        gpsRemainderMeters = 0;
+        sensorStepsSinceLastGps = 0;
+        lastTimerCheckMs = Date.now();
 
-        walkTimer = setInterval(() => {
-          state.today.durationSec = (state.today.durationSec || 0) + 1;
-          updateHudUI();
-        }, 1000);
+        await requestPocketWakeLock();
+        await startMotionStepSensor();
+
+        walkTimer = setInterval(syncWalkElapsedTime, 1000);
 
         if (navigator.geolocation && window.L) {
           gpsWatchId = navigator.geolocation.watchPosition(
-            pos => {
-              const currentLatLng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-              if (lastGpsLatLng && map) {
-                const movedMeters = map.distance(lastGpsLatLng, currentLatLng);
-                if (movedMeters >= 4 && movedMeters < 150) {
-                  const strideMeters = (state.settings.strideCm || 76) / 100;
-                  const realAddedSteps = Math.round(movedMeters / strideMeters);
-                  state.today.steps += realAddedSteps;
-                  lastGpsLatLng = currentLatLng;
-                  saveState();
-                  updateHudUI();
-                }
-              } else {
-                lastGpsLatLng = currentLatLng;
-              }
-            },
+            handleGpsPosition,
             err => console.warn('GPS jälgimise info:', err.message),
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
           );
         }
       } else {
+        syncWalkElapsedTime();
         clearInterval(walkTimer);
+        walkTimer = null;
+        lastTimerCheckMs = 0;
+
+        stopMotionStepSensor();
+        await releasePocketWakeLock();
+
         if (gpsWatchId !== null && navigator.geolocation) {
           navigator.geolocation.clearWatch(gpsWatchId);
           gpsWatchId = null;
         }
+
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
-        if (state.today.steps > 0 || state.today.distanceKm > 0) {
+
+        const walkedInSession = (state.today.steps || 0) - sessionStartSteps;
+        if (walkedInSession > 0 || state.today.steps > 0) {
           state.history.unshift({
             date: new Date().toLocaleString('et-EE'),
             steps: state.today.steps,
             distanceKm: state.today.distanceKm,
             calories: state.today.calories
           });
-          saveState();
         }
+        saveState();
+        updateHudUI();
       }
     });
   }
@@ -414,4 +602,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initAdminAndPromos(renderProfile);
   refreshAllUI();
   initSupabase(refreshAllUI);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootGoWalkApp);
+} else {
+  bootGoWalkApp();
+}
