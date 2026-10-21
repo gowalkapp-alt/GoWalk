@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, MIDNIGHT INDIGO UI & SAMSUNG SVG FIX
+   GOWALK PRO — 6. MAIN ENTRY POINT, UNIFIED MIDNIGHT INDIGO & FAVICON/PWA
    ========================================================================== */
 
 import {
@@ -36,37 +36,144 @@ async function loadStatsModuleSafely() {
   }
 }
 
+// Raster-PNG gradiendi generaator (Samsung Internet Force Dark ei tumenda PNG-pilte!)
+function createPngGradient(c1, c2, c3) {
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = 320;
+    cv.height = 80;
+    const ctx = cv.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, cv.width, 0);
+    g.addColorStop(0, c1);
+    g.addColorStop(0.52, c2);
+    g.addColorStop(1, c3);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/png');
+  } catch (e) {
+    return '';
+  }
+}
+
+// Automaatne Favicon.png / GitHubi pildifaili ja PWA Manifesti seadistaja
+function setupFaviconAndPWA() {
+  const fallbackGitHubIcon = 'file_000000003a8c820abfebb762ae22beff.png';
+  const primaryIcon = 'favicon.png';
+
+  function applyIconLinks(hrefUrl) {
+    let iconLink = document.querySelector('link[rel="icon"]');
+    if (!iconLink) {
+      iconLink = document.createElement('link');
+      iconLink.rel = 'icon';
+      iconLink.type = 'image/png';
+      document.head.appendChild(iconLink);
+    }
+    iconLink.href = hrefUrl;
+
+    let appleLink = document.querySelector('link[rel="apple-touch-icon"]');
+    if (!appleLink) {
+      appleLink = document.createElement('link');
+      appleLink.rel = 'apple-touch-icon';
+      document.head.appendChild(appleLink);
+    }
+    appleLink.href = hrefUrl;
+
+    const manifestObj = {
+      name: 'GoWalk Pro',
+      short_name: 'GoWalk',
+      start_url: './',
+      display: 'standalone',
+      background_color: '#0f1429',
+      theme_color: '#0f1429',
+      icons: [
+        {
+          src: new URL(hrefUrl, window.location.href).href,
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any maskable'
+        }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
+    let manLink = document.querySelector('link[rel="manifest"]');
+    if (!manLink) {
+      manLink = document.createElement('link');
+      manLink.rel = 'manifest';
+      document.head.appendChild(manLink);
+    }
+    manLink.href = URL.createObjectURL(blob);
+  }
+
+  const testImg = new Image();
+  testImg.onload = function () {
+    applyIconLinks(primaryIcon);
+  };
+  testImg.onerror = function () {
+    applyIconLinks(fallbackGitHubIcon);
+  };
+  testImg.src = primaryIcon;
+}
+
 function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
+  setupFaviconAndPWA();
+
+  const metaTags = [
+    { name: 'color-scheme', content: 'only dark' },
+    { name: 'supported-color-schemes', content: 'dark' },
+    { name: 'darkreader-lock', content: 'true' },
+    { name: 'theme-color', content: '#0f1429' }
+  ];
+  for (let i = 0; i < metaTags.length; i++) {
+    let m = document.querySelector('meta[name="' + metaTags[i].name + '"]');
+    if (!m) {
+      m = document.createElement('meta');
+      m.name = metaTags[i].name;
+      document.head.appendChild(m);
+    }
+    m.content = metaTags[i].content;
+  }
+
+  const neonPng = createPngGradient('#7c3aed', '#c026d3', '#ec4899');
+  const redPng = createPngGradient('#e11d48', '#f43f5e', '#fb7185');
+
   if (!document.getElementById('gw-midnight-indigo-theme')) {
     const st = document.createElement('style');
     st.id = 'gw-midnight-indigo-theme';
 
-    const neonBtnSvg =
-      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%237c3aed'/%3E%3Cstop offset='52%25' stop-color='%23c026d3'/%3E%3Cstop offset='100%25' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g)'/%3E%3C/svg%3E\")";
-
-    const redBtnSvg =
-      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3ClinearGradient id='r' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23e11d48'/%3E%3Cstop offset='100%25' stop-color='%23f43f5e'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/svg%3E\")";
-
     const css = [
-      'body, .app-shell, .subview-modal, .sidebar-drawer { background: radial-gradient(circle at 50% 12%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
-      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.92) 0%, rgba(14, 18, 38, 0.96) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, #openGeneratorBtn { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border: none !important; color: #ffffff !important; font-weight: 700 !important; border-radius: 999px !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.45) !important; }',
-      '#startWalkBtn.walking-active { background-image: ' + redBtnSvg + ' !important; }',
-      '.map-style-pill.active, .layer-btn.active { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border-color: #f472b6 !important; color: #fff !important; }',
-      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(13, 17, 36, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(139, 92, 246, 0.24); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 2500; padding: 4px 8px; }',
+      ':root, html { color-scheme: only dark !important; }',
+      'body, .app-shell, .subview-modal, .sidebar-drawer, .modal-content, .dial-modal-card { background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
+      /* Peida vana Automaatne Trajektoori Generaator täielikult */
+      '#generatorModal { display: none !important; visibility: hidden !important; pointer-events: none !important; }',
+      /* Ühtsed Midnight Indigo kaardid kõigis modaalides (Seaded, Abi, Paigalda, Dial) */
+      '.settings-card, .promo-card, .info-card, .guide-card, .install-card, .subview-body > div:not(.gw-areng-wrap) { background: linear-gradient(160deg, rgba(26, 31, 66, 0.9) 0%, rgba(15, 20, 42, 0.95) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.28) !important; border-radius: 22px !important; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35) !important; }',
+      '.subview-modal { padding-bottom: 76px !important; }',
+      '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.75) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; color: #fff !important; }',
+      /* Alumine HUD kaart */
+      '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
+      /* Samsung-kindel PNG neoon-gradient kõigil peamistel tegevusnuppudel */
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, #openGeneratorBtn, #applyPromoBtn, #triggerInstallBtn, #saveAndRouteDialBtn, .dial-mode-btn.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.45) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.42) !important; }',
+      '#startWalkBtn, .gw-rb-cta, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
+      '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
+      /* Sammuratta (Dial Modal) ühtlustus */
+      '.dial-step-btn { background: rgba(26, 31, 66, 0.88) !important; border: 1px solid rgba(168, 85, 247, 0.32) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
+      '#saveStepsOnlyBtn { background: rgba(22, 27, 58, 0.9) !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
+      /* Alumine 4-nupuga navigatsiooniriba */
+      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 3500; padding: 4px 8px; }',
       '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
       '.gw-bnav-btn svg { width: 20px; height: 20px; }',
-      '.gw-bnav-btn.active { color: #ec4899; }',
-      '.gw-bnav-btn.active svg { stroke: #ec4899; filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.6)); }',
-      '.gw-rb-modal { position: fixed; inset: 0; background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 70%, #090d1a 100%); z-index: 2400; display: none; flex-direction: column; padding: 18px 18px 84px; overflow-y: auto; }',
+      '.gw-bnav-btn.active { color: #ec4899 !important; }',
+      '.gw-bnav-btn.active svg { stroke: #ec4899 !important; filter: drop-shadow(0 0 8px rgba(236, 72, 153, 0.6)); }',
+      /* Loo jalutusring vaade */
+      '.gw-rb-modal { position: fixed; inset: 0; background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 70%, #090d1a 100%); z-index: 2800; display: none; flex-direction: column; padding: 18px 18px 88px; overflow-y: auto; }',
       '.gw-rb-modal.open { display: flex; }',
       '.gw-rb-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }',
-      '.gw-rb-back { width: 38px; height: 38px; border-radius: 50%; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(139, 92, 246, 0.3); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }',
+      '.gw-rb-back { width: 38px; height: 38px; border-radius: 50%; background: rgba(30, 41, 59, 0.75); border: 1px solid rgba(168, 85, 247, 0.35); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }',
       '.gw-rb-title { font-size: 1.2rem; font-weight: 800; color: #fff; }',
       '.gw-rb-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }',
-      '.gw-rb-tab { background: rgba(22, 27, 58, 0.85); border: 1px solid rgba(139, 92, 246, 0.25); color: #cbd5e1; border-radius: 14px; padding: 10px 6px; font: 600 0.82rem inherit; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }',
+      '.gw-rb-tab { background: rgba(22, 27, 58, 0.88); border: 1px solid rgba(168, 85, 247, 0.26); color: #cbd5e1; border-radius: 14px; padding: 10px 6px; font: 600 0.82rem inherit; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }',
       '.gw-rb-tab svg { width: 16px; height: 16px; }',
-      '.gw-rb-tab.active { background-image: ' + neonBtnSvg + ' !important; background-size: 100% 100% !important; border-color: #f472b6; color: #fff; box-shadow: 0 0 14px rgba(168, 85, 247, 0.4); }',
+      '.gw-rb-tab.active { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border-color: #f472b6 !important; color: #fff !important; box-shadow: 0 0 14px rgba(236, 72, 153, 0.45); }',
       '.gw-rb-valbox { text-align: center; margin-bottom: 16px; }',
       '.gw-rb-bigval { font-size: 2.1rem; font-weight: 800; color: #fff; }',
       '.gw-rb-unit { font-size: 1rem; color: #cbd5e1; margin-left: 6px; font-weight: 600; }',
@@ -74,18 +181,32 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.gw-rb-marks { display: flex; justify-content: space-between; font-size: 0.72rem; color: #94a3b8; font-weight: 600; margin-bottom: 20px; }',
       '.gw-rb-sub { font-size: 0.9rem; font-weight: 700; color: #cbd5e1; margin-bottom: 10px; }',
       '.gw-rb-types { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }',
-      '.gw-rb-type { display: flex; align-items: center; gap: 14px; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 18px; padding: 12px 14px; cursor: pointer; transition: 0.2s; }',
-      '.gw-rb-type.active { background: rgba(124, 58, 237, 0.28); border-color: #ec4899; box-shadow: 0 0 16px rgba(236, 72, 153, 0.3); }',
-      '.gw-rb-tico { width: 40px; height: 40px; border-radius: 12px; background: rgba(168, 85, 247, 0.18); color: #e879f9; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }',
+      '.gw-rb-type { display: flex; align-items: center; gap: 14px; background: linear-gradient(160deg, rgba(26, 31, 66, 0.9), rgba(15, 20, 42, 0.95)); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 20px; padding: 12px 14px; cursor: pointer; transition: 0.2s; }',
+      '.gw-rb-type.active { background: rgba(124, 58, 237, 0.28); border-color: #ec4899 !important; box-shadow: 0 0 16px rgba(236, 72, 153, 0.32); }',
+      '.gw-rb-tico { width: 40px; height: 40px; border-radius: 12px; background: rgba(236, 72, 153, 0.16); color: #f472b6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }',
       '.gw-rb-tname { font-size: 0.95rem; font-weight: 700; color: #fff; }',
       '.gw-rb-tdesc { font-size: 0.76rem; color: #94a3b8; }',
-      '.gw-rb-stops { display: flex; align-items: center; justify-content: space-between; background: rgba(22, 27, 58, 0.82); border: 1px solid rgba(139, 92, 246, 0.22); border-radius: 16px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.84rem; color: #cbd5e1; font-weight: 600; }',
+      '.gw-rb-stops { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(160deg, rgba(26, 31, 66, 0.9), rgba(15, 20, 42, 0.95)); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 18px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.84rem; color: #cbd5e1; font-weight: 600; }',
       '.gw-rb-stepper { display: flex; align-items: center; gap: 12px; }',
-      '.gw-rb-sbtn { width: 32px; height: 32px; border-radius: 9px; background: rgba(139, 92, 246, 0.22); border: 1px solid rgba(168, 85, 247, 0.4); color: #fff; font-weight: 700; cursor: pointer; }',
-      '.gw-rb-cta { width: 100%; padding: 15px; font-size: 1rem; font-weight: 800; color: #fff; border: none; border-radius: 999px; box-shadow: 0 8px 24px rgba(217, 70, 239, 0.5); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }'
+      '.gw-rb-sbtn { width: 32px; height: 32px; border-radius: 9px; background: rgba(168, 85, 247, 0.25); border: 1px solid rgba(236, 72, 153, 0.45); color: #fff; font-weight: 700; cursor: pointer; }',
+      '.gw-rb-cta { width: 100%; padding: 15px; font-size: 1rem; font-weight: 800; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }'
     ];
     st.textContent = css.join('\n');
     document.head.appendChild(st);
+  }
+
+  // Uuenda Abi & Kasutusjuhendi vana sünkroniseerimise tekst automaatselt
+  const helpModal = document.getElementById('helpModal');
+  if (helpModal) {
+    const cards = helpModal.querySelectorAll('p, div, span, h4, h3');
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i].textContent && cards[i].textContent.indexOf('Kuidas töötab sünkroniseerimine') !== -1 && cards[i].children.length === 0) {
+        cards[i].textContent = 'Automaatne jalutusring & sammulugeja';
+      }
+      if (cards[i].textContent && cards[i].textContent.indexOf('Terviseandmete sünkroniseerimine') !== -1 && cards[i].children.length === 0) {
+        cards[i].textContent = 'Ava alt menüüst "Marsruudid", vali soovitud sammud või aeg ning GoWalk koostab sulle täpse jalutusringi algusega sinu asukohast.';
+      }
+    }
   }
 
   if (!document.getElementById('gwRouteBuilderModal')) {
@@ -175,6 +296,7 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     rb.addEventListener('click', function (e) {
       if (e.target.closest('#gwRbCloseBtn')) {
         rb.classList.remove('open');
+        goHomeFn();
         return;
       }
       const tab = e.target.closest('.gw-rb-tab');
@@ -205,6 +327,7 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       }
       if (e.target.closest('#gwRbCreateBtn')) {
         rb.classList.remove('open');
+        goHomeFn();
         generateLoopRouteForSteps(rbSteps);
       }
     });
@@ -249,6 +372,13 @@ function bootGoWalkApp() {
   if (syncModalEl) syncModalEl.remove();
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
+
+  // Eemalda vana generaatori modaal DOM-ist või peida see
+  const oldGenModal = document.getElementById('generatorModal');
+  if (oldGenModal) {
+    oldGenModal.classList.remove('open');
+    oldGenModal.style.display = 'none';
+  }
 
   if (window.lucide) {
     window.lucide.createIcons();
@@ -350,6 +480,15 @@ function bootGoWalkApp() {
   const navItems = document.querySelectorAll('.nav-item');
   const subviewModals = document.querySelectorAll('.subview-modal');
 
+  function setBottomNavActive(key) {
+    const nav = document.getElementById('gwBottomNavbar');
+    if (!nav) return;
+    const btns = nav.querySelectorAll('.gw-bnav-btn');
+    for (let i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].getAttribute('data-bnav') === key);
+    }
+  }
+
   function openDrawer() {
     if (sidebarDrawer) sidebarDrawer.classList.add('open');
     if (drawerOverlay) drawerOverlay.classList.add('open');
@@ -371,6 +510,7 @@ function bootGoWalkApp() {
     }
     const rbModal = document.getElementById('gwRouteBuilderModal');
     if (rbModal) rbModal.classList.remove('open');
+    setBottomNavActive('home');
     invalidateMapSize();
   }
 
@@ -379,6 +519,9 @@ function bootGoWalkApp() {
     for (let i = 0; i < subviewModals.length; i++) {
       subviewModals[i].classList.remove('open');
     }
+    const genM = document.getElementById('generatorModal');
+    if (genM) genM.classList.remove('open');
+
     const rbModal = document.getElementById('gwRouteBuilderModal');
     if (rbModal) {
       const missing = getMissingSteps();
@@ -388,6 +531,7 @@ function bootGoWalkApp() {
       if (sliderEl) sliderEl.value = String(defSteps);
       if (valEl) valEl.textContent = defSteps.toLocaleString('et-EE');
       rbModal.classList.add('open');
+      setBottomNavActive('routes');
     }
   }
 
@@ -405,13 +549,17 @@ function bootGoWalkApp() {
           console.error(err);
         });
       modal.classList.add('open');
+      setBottomNavActive('stats');
     }
   }
 
   function openSettingsView() {
     closeAllModalsAndGoHome();
     const modal = document.getElementById('settingsModal');
-    if (modal) modal.classList.add('open');
+    if (modal) {
+      modal.classList.add('open');
+      setBottomNavActive('settings');
+    }
   }
 
   for (let i = 0; i < navItems.length; i++) {
@@ -425,6 +573,8 @@ function bootGoWalkApp() {
 
       if (targetId === 'statsModal') {
         openStatsView();
+      } else if (targetId === 'settingsModal') {
+        openSettingsView();
       } else if (targetId !== 'home') {
         const modal = document.getElementById(targetId);
         if (modal) {
@@ -444,14 +594,19 @@ function bootGoWalkApp() {
     });
   }
 
-  const oldGenTrigger = document.getElementById('openGeneratorBtn') || document.querySelector('[data-action="generate"]');
-  if (oldGenTrigger) {
-    oldGenTrigger.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openRouteBuilderView();
-    }, true);
-  }
+  // Püüa kinni KÕIK vajutused parempoolsele sädelevale generaatori nupule
+  document.addEventListener(
+    'click',
+    function (e) {
+      const genBtn = e.target.closest('#openGeneratorBtn, [data-target="generatorModal"]');
+      if (genBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        openRouteBuilderView();
+      }
+    },
+    true
+  );
 
   // ==========================================================================
   // ALUMINE HUD & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS DRIFT FILTER)
@@ -848,15 +1003,15 @@ function bootGoWalkApp() {
       .catch(function () {});
   }
 
+  setupStepDialModal(updateHudUI, generateLoopRouteForSteps);
+  initMapAndRouting(updateHudUI);
+  initAdminAndPromos(renderProfile);
   applyMidnightIndigoThemeAndNav(
     openRouteBuilderView,
     openStatsView,
     openSettingsView,
     closeAllModalsAndGoHome
   );
-  setupStepDialModal(updateHudUI, generateLoopRouteForSteps);
-  initMapAndRouting(updateHudUI);
-  initAdminAndPromos(renderProfile);
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
