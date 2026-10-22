@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, STRIDE CALCULATOR & CUSTOM MAP PICKER
+   GOWALK PRO — 6. MAIN ENTRY POINT, PRECISION INDOOR GPS & MIDNIGHT INDIGO UI
    ========================================================================== */
 
 import {
@@ -112,16 +112,251 @@ function setupFaviconAndPWA() {
   testImg.src = primaryIcon;
 }
 
-// Kohandatud "Vaikimisi kaardistiil" Midnight Indigo valija (asendab Androidi halli select-akna)
+// ==========================================================================
+// TÄPPIS-GPS MOOTOR SISEoludesse + LIIKUV GPS-NUPP
+// ==========================================================================
+
+function setupPrecisionGpsLocator() {
+  if (!navigator.geolocation) return;
+
+  const origGetCurrentPosition = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+  const origWatchPosition = navigator.geolocation.watchPosition.bind(navigator.geolocation);
+  const origClearWatch = navigator.geolocation.clearWatch.bind(navigator.geolocation);
+
+  let activeRefineWatchId = null;
+  let activeRefineTimer = null;
+  let toastHideTimer = null;
+
+  function getGpsToast() {
+    let t = document.getElementById('gwGpsStatusToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'gwGpsStatusToast';
+      t.className = 'gw-gps-toast';
+      t.innerHTML = '<span class="gw-gps-dot"></span><span id="gwGpsToastText">Otsin täpset GPS-asukohta...</span>';
+      document.body.appendChild(t);
+    }
+    return t;
+  }
+
+  function showGpsToast(msg, isLocked) {
+    const t = getGpsToast();
+    const txt = document.getElementById('gwGpsToastText');
+    if (txt) txt.textContent = msg;
+    t.classList.toggle('locked', Boolean(isLocked));
+    t.classList.add('visible');
+    if (toastHideTimer) clearTimeout(toastHideTimer);
+    if (isLocked) {
+      toastHideTimer = setTimeout(function () {
+        t.classList.remove('visible');
+      }, 2800);
+    }
+  }
+
+  function findLocateButton() {
+    const byId =
+      document.getElementById('locateBtn') ||
+      document.getElementById('locateMeBtn') ||
+      document.getElementById('gpsBtn') ||
+      document.getElementById('centerMapBtn');
+    if (byId) return byId;
+
+    const iconEl = document.querySelector(
+      '[data-lucide="crosshair"], [data-lucide="locate"], [data-lucide="locate-fixed"], svg.lucide-crosshair, svg.lucide-locate, svg.lucide-locate-fixed'
+    );
+    if (iconEl) return iconEl.closest('button');
+    return null;
+  }
+
+  function setGpsButtonAnimating(active) {
+    const btn = findLocateButton();
+    if (!btn) return;
+    btn.classList.toggle('gw-gps-searching', Boolean(active));
+  }
+
+  function movePinAMarkerOnMap(lat, lng) {
+    if (!window.L || !map || !map._layers) return;
+    const latlng = L.latLng(lat, lng);
+    const layerIds = Object.keys(map._layers);
+
+    for (let i = 0; i < layerIds.length; i++) {
+      const lyr = map._layers[layerIds[i]];
+      if (lyr && typeof lyr.setLatLng === 'function' && lyr.options && lyr.options.icon) {
+        const htmlStr = String((lyr.options.icon.options && lyr.options.icon.options.html) || '');
+        const isDraggable = Boolean(lyr.options.draggable || (lyr.dragging && lyr.dragging._enabled));
+        if (isDraggable || htmlStr.indexOf('>A<') !== -1 || htmlStr.indexOf('pin-a') !== -1) {
+          lyr.setLatLng(latlng);
+          if (typeof lyr.fire === 'function') {
+            lyr.fire('dragend');
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  function saveLastPreciseFix(pos) {
+    try {
+      localStorage.setItem(
+        'gowalk_last_precise_gps',
+        JSON.stringify({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          acc: pos.coords.accuracy,
+          ts: Date.now()
+        })
+      );
+    } catch (e) {}
+  }
+
+  function loadLastPreciseFix() {
+    try {
+      const raw = localStorage.getItem('gowalk_last_precise_gps');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && Date.now() - parsed.ts < 12 * 3600 * 1000) {
+        return parsed;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function stopActiveRefinement() {
+    if (activeRefineWatchId !== null) {
+      origClearWatch(activeRefineWatchId);
+      activeRefineWatchId = null;
+    }
+    if (activeRefineTimer) {
+      clearTimeout(activeRefineTimer);
+      activeRefineTimer = null;
+    }
+    setGpsButtonAnimating(false);
+  }
+
+  function runHighPrecisionLocationLock(successCallback, errorCallback) {
+    stopActiveRefinement();
+    setGpsButtonAnimating(true);
+    showGpsToast('Otsin täpset GPS-asukohta...', false);
+
+    let bestPos = null;
+    let bestAccuracy = Infinity;
+    const startTimeMs = Date.now();
+    const cachedPrecise = loadLastPreciseFix();
+
+    activeRefineWatchId = origWatchPosition(
+      function (pos) {
+        const acc = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
+        const elapsedMs = Date.now() - startTimeMs;
+
+        // Kui esimene vastus toas on väga ebatäpne mobiilimast (> 250 m), oota kuni 3.5 s täpsemat satelliidi/Wi-Fi signaali
+        if (acc > 250 && elapsedMs < 3500) {
+          showGpsToast('Täpsustan GPS-signaali (±' + Math.round(acc) + ' m)...', false);
+          if (!bestPos && cachedPrecise && cachedPrecise.acc < 60) {
+            movePinAMarkerOnMap(cachedPrecise.lat, cachedPrecise.lng);
+            if (map) map.setView([cachedPrecise.lat, cachedPrecise.lng], Math.max(map.getZoom(), 16));
+          }
+          bestPos = pos;
+          bestAccuracy = acc;
+          return;
+        }
+
+        if (acc < bestAccuracy) {
+          bestAccuracy = acc;
+          bestPos = pos;
+
+          if (typeof successCallback === 'function') {
+            successCallback(pos);
+          }
+          movePinAMarkerOnMap(pos.coords.latitude, pos.coords.longitude);
+          if (map) {
+            map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16), {
+              animate: true
+            });
+          }
+
+          if (acc <= 65) {
+            saveLastPreciseFix(pos);
+          }
+
+          if (acc <= 18) {
+            stopActiveRefinement();
+            showGpsToast('Täpne asukoht lukustatud (±' + Math.round(acc) + ' m) ✓', true);
+          } else {
+            showGpsToast('Täpsustan asukohta (±' + Math.round(acc) + ' m)...', false);
+          }
+        }
+      },
+      function (err) {
+        if (!bestPos && typeof errorCallback === 'function') {
+          errorCallback(err);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      }
+    );
+
+    // Lõpeta otsing 6.5 sekundi pärast parima leitud tulemusega
+    activeRefineTimer = setTimeout(function () {
+      if (bestPos) {
+        if (typeof successCallback === 'function') {
+          successCallback(bestPos);
+        }
+        movePinAMarkerOnMap(bestPos.coords.latitude, bestPos.coords.longitude);
+        if (map) {
+          map.setView([bestPos.coords.latitude, bestPos.coords.longitude], Math.max(map.getZoom(), 16), {
+            animate: true
+          });
+        }
+        showGpsToast('Asukoht leitud (±' + Math.round(bestAccuracy) + ' m) ✓', true);
+      } else {
+        origGetCurrentPosition(
+          function (fallbackPos) {
+            if (typeof successCallback === 'function') successCallback(fallbackPos);
+            movePinAMarkerOnMap(fallbackPos.coords.latitude, fallbackPos.coords.longitude);
+            showGpsToast('Asukoht leitud ✓', true);
+          },
+          function (err) {
+            showGpsToast('GPS-signaali ei leitud', true);
+            if (typeof errorCallback === 'function') errorCallback(err);
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+        );
+      }
+      stopActiveRefinement();
+    }, 6500);
+  }
+
+  // Asenda tavaline getCurrentPosition täppis-GPS mootoriga
+  navigator.geolocation.getCurrentPosition = function (success, error) {
+    runHighPrecisionLocationLock(success, error);
+  };
+
+  // Lisa ka otsene klikikuular parempoolsele GPS-sihiku nupule
+  document.addEventListener(
+    'click',
+    function (e) {
+      const locateBtn = findLocateButton();
+      if (locateBtn && locateBtn.contains(e.target)) {
+        runHighPrecisionLocationLock(null, null);
+      }
+    },
+    true
+  );
+}
+
+// Kohandatud "Vaikimisi kaardistiil" Midnight Indigo valija
 function setupCustomMapStylePicker() {
   const selectEl = document.getElementById('settingMapStyle');
   if (!selectEl) return;
 
   const styleMeta = {
-    dark: { title: 'Tume (Pro Dark)', sub: 'Sügav tume kaart neoon-trajektooriga', icon: 'moon', short: 'Tume' },
-    light: { title: 'Hele (Tavaline)', sub: 'Klassikaline hele tänavakaart', icon: 'sun', short: 'Hele' },
-    hybrid: { title: 'Hübriid (Satelliit)', sub: 'Aerofoto koos tänavanimedega', icon: 'layers', short: 'Hübriid' },
-    terrain: { title: 'Maastik (Reljeef)', sub: 'Kõrgusjooned ja loodusrajad', icon: 'mountain', short: 'Maastik' }
+    dark: { title: 'Tume (Pro Dark)', sub: 'Sügav tume kaart neoon-trajektooriga', icon: 'moon' },
+    light: { title: 'Hele (Tavaline)', sub: 'Klassikaline hele tänavakaart', icon: 'sun' },
+    hybrid: { title: 'Hübriid (Satelliit)', sub: 'Aerofoto koos tänavanimedega', icon: 'layers' },
+    terrain: { title: 'Maastik (Reljeef)', sub: 'Kõrgusjooned ja loodusrajad', icon: 'mountain' }
   };
 
   function getMetaForVal(val) {
@@ -160,21 +395,24 @@ function setupCustomMapStylePicker() {
     ov.className = 'gw-calc-overlay';
 
     let optsHtml = '';
-    const opts = selectEl.options && selectEl.options.length > 0
-      ? Array.from(selectEl.options).map(function (o) { return o.value; })
-      : ['dark', 'light', 'hybrid', 'terrain'];
+    const opts =
+      selectEl.options && selectEl.options.length > 0
+        ? Array.from(selectEl.options).map(function (o) {
+            return o.value;
+          })
+        : ['dark', 'light', 'hybrid', 'terrain'];
 
     for (let i = 0; i < opts.length; i++) {
       const val = opts[i];
       const m = getMetaForVal(val);
       optsHtml +=
         '<button type="button" class="gw-mstyle-opt" data-mval="' + val + '">' +
-          '<div class="gw-mstyle-ico"><i data-lucide="' + m.icon + '"></i></div>' +
-          '<div class="gw-mstyle-text">' +
-            '<div class="gw-mstyle-title">' + m.title + '</div>' +
-            '<div class="gw-mstyle-sub">' + m.sub + '</div>' +
-          '</div>' +
-          '<div class="gw-mstyle-radio"></div>' +
+        '<div class="gw-mstyle-ico"><i data-lucide="' + m.icon + '"></i></div>' +
+        '<div class="gw-mstyle-text">' +
+        '<div class="gw-mstyle-title">' + m.title + '</div>' +
+        '<div class="gw-mstyle-sub">' + m.sub + '</div>' +
+        '</div>' +
+        '<div class="gw-mstyle-radio"></div>' +
         '</button>';
     }
 
@@ -220,7 +458,6 @@ function setupCustomMapStylePicker() {
   };
 }
 
-// Sammupikkuse kalkulaatori ehitaja ja ühendaja Seadete lehele
 function setupStrideCalculator(updateHudFn) {
   const strideInput = document.getElementById('settingStrideLength');
   if (!strideInput) return;
@@ -424,7 +661,6 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.subview-modal { padding-bottom: 76px !important; }',
       '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      /* PNG neoon-gradient KÕIGIL peamistel nuppudel (sh Seadete Rakenda nupp) */
       '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
       '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
       '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
@@ -1271,6 +1507,8 @@ function bootGoWalkApp() {
       .catch(function () {});
   }
 
+  // Sea täppis-GPS paika enne kaardi alglaadimist, et juba avamisel leitaks täpne asukoht
+  setupPrecisionGpsLocator();
   setupStepDialModal(updateHudUI, generateLoopRouteForSteps);
   initMapAndRouting(updateHudUI);
   initAdminAndPromos(renderProfile);
