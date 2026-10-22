@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, STRIDE CALCULATOR & MIDNIGHT INDIGO UI
+   GOWALK PRO — 6. MAIN ENTRY POINT, STRIDE CALCULATOR & CUSTOM MAP PICKER
    ========================================================================== */
 
 import {
@@ -36,7 +36,6 @@ async function loadStatsModuleSafely() {
   }
 }
 
-// Raster-PNG gradiendi generaator (püsib Samsung Internetis ja Chrome'is 100% identne)
 function createPngGradient(c1, c2, c3) {
   try {
     const cv = document.createElement('canvas');
@@ -113,6 +112,114 @@ function setupFaviconAndPWA() {
   testImg.src = primaryIcon;
 }
 
+// Kohandatud "Vaikimisi kaardistiil" Midnight Indigo valija (asendab Androidi halli select-akna)
+function setupCustomMapStylePicker() {
+  const selectEl = document.getElementById('settingMapStyle');
+  if (!selectEl) return;
+
+  const styleMeta = {
+    dark: { title: 'Tume (Pro Dark)', sub: 'Sügav tume kaart neoon-trajektooriga', icon: 'moon', short: 'Tume' },
+    light: { title: 'Hele (Tavaline)', sub: 'Klassikaline hele tänavakaart', icon: 'sun', short: 'Hele' },
+    hybrid: { title: 'Hübriid (Satelliit)', sub: 'Aerofoto koos tänavanimedega', icon: 'layers', short: 'Hübriid' },
+    terrain: { title: 'Maastik (Reljeef)', sub: 'Kõrgusjooned ja loodusrajad', icon: 'mountain', short: 'Maastik' }
+  };
+
+  function getMetaForVal(val) {
+    if (styleMeta[val]) return styleMeta[val];
+    const v = String(val || '').toLowerCase();
+    if (v.indexOf('light') !== -1 || v.indexOf('hele') !== -1) return styleMeta.light;
+    if (v.indexOf('hyb') !== -1 || v.indexOf('sat') !== -1) return styleMeta.hybrid;
+    if (v.indexOf('terr') !== -1 || v.indexOf('rel') !== -1 || v.indexOf('maas') !== -1) return styleMeta.terrain;
+    return styleMeta.dark;
+  }
+
+  let trigBtn = document.getElementById('gwCustomMapSelectBtn');
+  if (!trigBtn) {
+    trigBtn = document.createElement('button');
+    trigBtn.type = 'button';
+    trigBtn.id = 'gwCustomMapSelectBtn';
+    trigBtn.className = 'gw-map-select-trigger';
+    selectEl.parentNode.insertBefore(trigBtn, selectEl.nextSibling);
+  }
+
+  function updateTriggerLabel() {
+    const curVal = selectEl.value || state.settings.mapLayer || 'dark';
+    const m = getMetaForVal(curVal);
+    trigBtn.innerHTML =
+      '<i data-lucide="' + m.icon + '"></i>' +
+      '<span>' + m.title + '</span>' +
+      '<i data-lucide="chevron-down" style="width:15px;height:15px;color:#94a3b8;margin-left:2px;"></i>';
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  updateTriggerLabel();
+
+  if (!document.getElementById('gwMapStyleOverlay')) {
+    const ov = document.createElement('div');
+    ov.id = 'gwMapStyleOverlay';
+    ov.className = 'gw-calc-overlay';
+
+    let optsHtml = '';
+    const opts = selectEl.options && selectEl.options.length > 0
+      ? Array.from(selectEl.options).map(function (o) { return o.value; })
+      : ['dark', 'light', 'hybrid', 'terrain'];
+
+    for (let i = 0; i < opts.length; i++) {
+      const val = opts[i];
+      const m = getMetaForVal(val);
+      optsHtml +=
+        '<button type="button" class="gw-mstyle-opt" data-mval="' + val + '">' +
+          '<div class="gw-mstyle-ico"><i data-lucide="' + m.icon + '"></i></div>' +
+          '<div class="gw-mstyle-text">' +
+            '<div class="gw-mstyle-title">' + m.title + '</div>' +
+            '<div class="gw-mstyle-sub">' + m.sub + '</div>' +
+          '</div>' +
+          '<div class="gw-mstyle-radio"></div>' +
+        '</button>';
+    }
+
+    ov.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title"><i data-lucide="map" style="color:#ec4899;"></i> Vaikimisi kaardistiil</span>',
+          '<button type="button" class="gw-calc-close" id="gwMapStyleCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div class="gw-mstyle-list" id="gwMapStyleOptionList">' + optsHtml + '</div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(ov);
+
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.closest('#gwMapStyleCloseBtn')) {
+        ov.classList.remove('open');
+        return;
+      }
+      const optBtn = e.target.closest('.gw-mstyle-opt');
+      if (optBtn) {
+        const chosen = optBtn.getAttribute('data-mval') || 'dark';
+        selectEl.value = chosen;
+        state.settings.mapLayer = chosen;
+        saveState();
+        switchMapLayer(chosen);
+        updateTriggerLabel();
+        ov.classList.remove('open');
+      }
+    });
+  }
+
+  trigBtn.onclick = function () {
+    const ov = document.getElementById('gwMapStyleOverlay');
+    if (!ov) return;
+    const curVal = selectEl.value || state.settings.mapLayer || 'dark';
+    const allOpts = ov.querySelectorAll('.gw-mstyle-opt');
+    for (let i = 0; i < allOpts.length; i++) {
+      allOpts[i].classList.toggle('active', allOpts[i].getAttribute('data-mval') === curVal);
+    }
+    ov.classList.add('open');
+    if (window.lucide) window.lucide.createIcons();
+  };
+}
+
 // Sammupikkuse kalkulaatori ehitaja ja ühendaja Seadete lehele
 function setupStrideCalculator(updateHudFn) {
   const strideInput = document.getElementById('settingStrideLength');
@@ -121,14 +228,16 @@ function setupStrideCalculator(updateHudFn) {
   const parentCard =
     strideInput.closest('.setting-item, .setting-row, .settings-card') || strideInput.parentElement;
 
-  if (parentCard && !document.getElementById('openStrideCalcBtn')) {
-    parentCard.style.flexWrap = 'wrap';
-    const trigBtn = document.createElement('button');
-    trigBtn.type = 'button';
-    trigBtn.id = 'openStrideCalcBtn';
-    trigBtn.className = 'gw-stride-calc-trigger';
-    trigBtn.innerHTML = '<i data-lucide="calculator"></i><span>Arvuta oma täpne sammupikkus</span>';
-    parentCard.appendChild(trigBtn);
+  if (parentCard) {
+    parentCard.classList.add('gw-stride-row-card');
+    if (!document.getElementById('openStrideCalcBtn')) {
+      const trigBtn = document.createElement('button');
+      trigBtn.type = 'button';
+      trigBtn.id = 'openStrideCalcBtn';
+      trigBtn.className = 'gw-stride-calc-trigger';
+      trigBtn.innerHTML = '<i data-lucide="calculator"></i><span>Arvuta oma täpne sammupikkus</span>';
+      parentCard.appendChild(trigBtn);
+    }
   }
 
   if (!document.getElementById('gwStrideCalcOverlay')) {
@@ -315,8 +424,8 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.subview-modal { padding-bottom: 76px !important; }',
       '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      /* PNG neoon-gradient KÕIGIL peamistel nuppudel (sh Seadete Rakenda, Sammuratas ja Kalkulaator) */
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .promo-box button, #settingsModal button.primary-btn, #triggerInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.5) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
+      /* PNG neoon-gradient KÕIGIL peamistel nuppudel (sh Seadete Rakenda nupp) */
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
       '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
       '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
       '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
@@ -1172,6 +1281,7 @@ function bootGoWalkApp() {
     closeAllModalsAndGoHome
   );
   setupStrideCalculator(updateHudUI);
+  setupCustomMapStylePicker();
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
