@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAIN STYLESHEET (MIDNIGHT INDIGO, SETTINGS & DIAL OVERHAUL)
+   GOWALK PRO — MAIN STYLESHEET (MIDNIGHT INDIGO, SETTINGS & CUSTOM SELECT)
    ========================================================================== */
 
 @import url('./variables.css');
@@ -33,7 +33,6 @@ body {
   color: #f8fafc !important;
 }
 
-/* Päiseriba modaalides */
 .subview-header,
 #settingsModal header,
 #helpModal header,
@@ -43,7 +42,6 @@ body {
   backdrop-filter: blur(14px) !important;
 }
 
-/* Kõik kaardid Seadete, Abi ja Paigalda vaates */
 #settingsModal .subview-body > div,
 #settingsModal .settings-group,
 #settingsModal .setting-item,
@@ -58,27 +56,39 @@ body {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Sisestuskastid (10000, 76, GOWALK50, Tume kaardistiil) — EI OLE ENAM MUSTAD! */
+/* Sisestuskastid (10000, 76, GOWALK50) */
 #settingsModal input[type="number"],
 #settingsModal input[type="text"],
-#settingsModal select,
 #promoCodeInput,
 #settingStepGoal,
-#settingStrideLength,
-#settingMapStyle {
-  background: rgba(15, 20, 44, 0.95) !important;
-  border: 1px solid rgba(236, 72, 153, 0.45) !important;
+#settingStrideLength {
+  background: rgba(13, 18, 40, 0.95) !important;
+  border: 1px solid rgba(236, 72, 153, 0.48) !important;
   color: #ffffff !important;
   border-radius: 14px !important;
   font-weight: 700 !important;
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 12px rgba(168, 85, 247, 0.18) !important;
 }
 
-#settingsModal input:focus,
-#settingsModal select:focus {
-  border-color: #ec4899 !important;
-  box-shadow: 0 0 16px rgba(236, 72, 153, 0.5) !important;
-  outline: none !important;
+/* Sammupikkuse kaardi joondus: tekst vasakul, 76 paremal, kalkulaator all */
+.gw-stride-row-card {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+.gw-stride-row-card > div:first-child {
+  flex: 1 1 55% !important;
+  min-width: 150px !important;
+}
+
+.gw-stride-row-card > input#settingStrideLength {
+  width: 96px !important;
+  flex: 0 0 96px !important;
+  text-align: right !important;
+  margin-left: auto !important;
 }
 
 /* Ekspordi nupp Seadetes */
@@ -92,13 +102,128 @@ body {
 }
 
 /* ==========================================================================
-   2. SAMMUPPIKKUSE KALKULAATORI NUPP & MODAALAKEN
+   2. KOHANDATUD KAARDISTIILI VALIKUALA (ASENDAB HALLI SÜSTEEMSE MENÜÜ)
+   ========================================================================== */
+
+#settingMapStyle {
+  display: none !important;
+}
+
+.gw-map-select-trigger {
+  background: rgba(13, 18, 40, 0.95) !important;
+  border: 1px solid rgba(236, 72, 153, 0.48) !important;
+  color: #ffffff !important;
+  border-radius: 14px !important;
+  padding: 10px 13px !important;
+  font: 700 0.84rem inherit !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 12px rgba(168, 85, 247, 0.18) !important;
+}
+
+.gw-map-select-trigger svg {
+  width: 16px;
+  height: 16px;
+  color: #f472b6;
+  flex-shrink: 0;
+}
+
+.gw-mstyle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gw-mstyle-opt {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(18, 24, 52, 0.92);
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  border-radius: 18px;
+  padding: 13px 15px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: 0.2s;
+  text-align: left;
+  width: 100%;
+}
+
+.gw-mstyle-opt.active {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.34), rgba(236, 72, 153, 0.24));
+  border-color: #ec4899;
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.32);
+  color: #ffffff;
+}
+
+.gw-mstyle-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(236, 72, 153, 0.16);
+  color: #f472b6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gw-mstyle-ico svg {
+  width: 19px;
+  height: 19px;
+}
+
+.gw-mstyle-text {
+  flex: 1;
+}
+
+.gw-mstyle-title {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.gw-mstyle-sub {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.gw-mstyle-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gw-mstyle-opt.active .gw-mstyle-radio {
+  border-color: #ec4899;
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.7);
+}
+
+.gw-mstyle-opt.active .gw-mstyle-radio::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ec4899;
+}
+
+/* ==========================================================================
+   3. SAMMUPPIKKUSE KALKULAATORI NUPP & MODAALAKEN
    ========================================================================== */
 
 .gw-stride-calc-trigger {
-  margin-top: 10px;
-  width: 100%;
-  padding: 10px 14px;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  margin-top: 4px;
+  padding: 11px 14px;
   border-radius: 14px;
   background: linear-gradient(135deg, rgba(124, 58, 237, 0.28), rgba(236, 72, 153, 0.22));
   border: 1px dashed rgba(244, 114, 182, 0.65);
@@ -120,9 +245,9 @@ body {
 .gw-calc-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 11, 24, 0.82);
-  backdrop-filter: blur(10px);
-  z-index: 3800;
+  background: rgba(8, 11, 24, 0.84);
+  backdrop-filter: blur(12px);
+  z-index: 3900;
   display: none;
   align-items: center;
   justify-content: center;
@@ -154,7 +279,7 @@ body {
 }
 
 .gw-calc-title {
-  font-size: 1.08rem;
+  font-size: 1.06rem;
   font-weight: 800;
   color: #fff;
   display: flex;
@@ -274,7 +399,7 @@ body {
 }
 
 /* ==========================================================================
-   3. SAMMURATTA (DIAL MODAL) MIDNIGHT INDIGO & NEOON-ROOSA STIIL
+   4. SAMMURATTA (DIAL MODAL) MIDNIGHT INDIGO & NEOON-ROOSA STIIL
    ========================================================================== */
 
 [id*="dial" i] .modal-card,
