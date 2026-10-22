@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAIN STYLESHEET (MIDNIGHT INDIGO, SETTINGS & CUSTOM SELECT)
+   GOWALK PRO — MAIN STYLESHEET (MIDNIGHT INDIGO, SETTINGS & GPS RADAR PULSE)
    ========================================================================== */
 
 @import url('./variables.css');
@@ -21,7 +21,83 @@ body {
 }
 
 /* ==========================================================================
-   1. SEADETE LEHT, ABI & PAIGALDAMISE VAATED (MIDNIGHT INDIGO + NEOON)
+   1. GPS OTSINGU ANIMATSIOON (PULSEERIV NUPP + TÄPSUSE TEATERIBA)
+   ========================================================================== */
+
+@keyframes gwGpsSpin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.14); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes gwGpsPulseAura {
+  0% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.75), 0 0 18px rgba(124, 58, 237, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(236, 72, 153, 0), 0 0 24px rgba(236, 72, 153, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0), 0 0 18px rgba(124, 58, 237, 0.65);
+  }
+}
+
+.gw-gps-searching {
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%) !important;
+  border-color: #f472b6 !important;
+  color: #ffffff !important;
+  animation: gwGpsPulseAura 1.3s infinite ease-out !important;
+}
+
+.gw-gps-searching svg,
+.gw-gps-searching i {
+  animation: gwGpsSpin 1.4s infinite linear !important;
+  stroke: #ffffff !important;
+}
+
+.gw-gps-toast {
+  position: fixed;
+  top: 112px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  background: linear-gradient(160deg, rgba(26, 31, 66, 0.96), rgba(14, 18, 38, 0.98));
+  border: 1px solid rgba(236, 72, 153, 0.55);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: #ffffff;
+  font: 700 0.78rem inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 18px rgba(236, 72, 153, 0.35);
+  z-index: 2300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
+}
+
+.gw-gps-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.gw-gps-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ec4899;
+  box-shadow: 0 0 10px #ec4899;
+  flex-shrink: 0;
+}
+
+.gw-gps-toast.locked .gw-gps-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+}
+
+/* ==========================================================================
+   2. SEADETE LEHT, ABI & PAIGALDAMISE VAATED (MIDNIGHT INDIGO + NEOON)
    ========================================================================== */
 
 #settingsModal,
@@ -56,7 +132,6 @@ body {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Sisestuskastid (10000, 76, GOWALK50) */
 #settingsModal input[type="number"],
 #settingsModal input[type="text"],
 #promoCodeInput,
@@ -70,7 +145,6 @@ body {
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 12px rgba(168, 85, 247, 0.18) !important;
 }
 
-/* Sammupikkuse kaardi joondus: tekst vasakul, 76 paremal, kalkulaator all */
 .gw-stride-row-card {
   display: flex !important;
   flex-wrap: wrap !important;
@@ -91,7 +165,6 @@ body {
   margin-left: auto !important;
 }
 
-/* Ekspordi nupp Seadetes */
 #exportDataBtn {
   background: linear-gradient(135deg, rgba(40, 32, 90, 0.92) 0%, rgba(22, 27, 58, 0.96) 100%) !important;
   border: 1px solid rgba(236, 72, 153, 0.45) !important;
@@ -102,7 +175,7 @@ body {
 }
 
 /* ==========================================================================
-   2. KOHANDATUD KAARDISTIILI VALIKUALA (ASENDAB HALLI SÜSTEEMSE MENÜÜ)
+   3. KOHANDATUD KAARDISTIILI VALIKUALA
    ========================================================================== */
 
 #settingMapStyle {
@@ -216,7 +289,7 @@ body {
 }
 
 /* ==========================================================================
-   3. SAMMUPPIKKUSE KALKULAATORI NUPP & MODAALAKEN
+   4. SAMMUPPIKKUSE KALKULAATORI NUPP & MODAALAKEN
    ========================================================================== */
 
 .gw-stride-calc-trigger {
@@ -399,7 +472,7 @@ body {
 }
 
 /* ==========================================================================
-   4. SAMMURATTA (DIAL MODAL) MIDNIGHT INDIGO & NEOON-ROOSA STIIL
+   5. SAMMURATTA (DIAL MODAL) MIDNIGHT INDIGO & NEOON-ROOSA STIIL
    ========================================================================== */
 
 [id*="dial" i] .modal-card,
