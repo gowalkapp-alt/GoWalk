@@ -500,3 +500,93 @@
   height: 19px;
   stroke-width: 2.5px;
 }
+
+/* ==========================================================================
+   MIDNIGHT INDIGO HUD CARD & PRECISION GPS RADAR ANIMATION
+   ========================================================================== */
+
+.hud-card,
+.bottom-hud,
+#bottomHud {
+  background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important;
+  border: 1px solid rgba(168, 85, 247, 0.34) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important;
+  bottom: 74px !important;
+  border-radius: 24px !important;
+}
+
+#startWalkBtn {
+  border-radius: 999px !important;
+}
+
+@keyframes gwGpsSpin {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.14); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes gwGpsPulseAura {
+  0% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.75), 0 0 18px rgba(124, 58, 237, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(236, 72, 153, 0), 0 0 24px rgba(236, 72, 153, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0), 0 0 18px rgba(124, 58, 237, 0.65);
+  }
+}
+
+.gw-gps-searching {
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%) !important;
+  border-color: #f472b6 !important;
+  color: #ffffff !important;
+  animation: gwGpsPulseAura 1.3s infinite ease-out !important;
+}
+
+.gw-gps-searching svg,
+.gw-gps-searching i {
+  animation: gwGpsSpin 1.4s infinite linear !important;
+  stroke: #ffffff !important;
+}
+
+.gw-gps-toast {
+  position: fixed;
+  top: 112px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  background: linear-gradient(160deg, rgba(26, 31, 66, 0.96), rgba(14, 18, 38, 0.98));
+  border: 1px solid rgba(236, 72, 153, 0.55);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: #ffffff;
+  font: 700 0.78rem inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 18px rgba(236, 72, 153, 0.35);
+  z-index: 2300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
+}
+
+.gw-gps-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.gw-gps-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ec4899;
+  box-shadow: 0 0 10px #ec4899;
+  flex-shrink: 0;
+}
+
+.gw-gps-toast.locked .gw-gps-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+}
