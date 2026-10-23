@@ -1,98 +1,50 @@
 /* ==========================================================================
-   GOWALK PRO — 1. VARIABLES, RESET & SHARED ICON HELPERS
+   GOWALK PRO — 1. VARIABLES.CSS (MIDNIGHT INDIGO & NEON PALETTE)
    ========================================================================== */
 
 :root {
-  --bg-deep: #080711;
-  --bg-surface: rgba(17, 14, 32, 0.88);
-  --bg-glass: rgba(20, 16, 38, 0.78);
-  --bg-card: rgba(30, 25, 56, 0.68);
-  --border-subtle: rgba(192, 132, 252, 0.14);
-  --border-highlight: rgba(139, 92, 246, 0.5);
+  color-scheme: only dark;
 
-  --text-primary: #f8fafc;
-  --text-secondary: #a5b4fc;
-  --text-muted: #64748b;
+  /* Midnight Indigo taustad */
+  --bg-deep: #090d1a;
+  --bg-dark: #0f1429;
+  --bg-main: #0f1429;
+  --bg-indigo: #1e1b4b;
+  --bg-panel: rgba(20, 25, 54, 0.94);
+  --bg-card: rgba(26, 31, 66, 0.92);
+  --surface: rgba(26, 31, 66, 0.92);
+  --surface-glass: rgba(15, 20, 42, 0.88);
 
-  --accent-primary: #8b5cf6;
-  --accent-glow: rgba(139, 92, 246, 0.45);
-  --accent-secondary: #c084fc;
-  --admin-accent: #f59e0b;
-  --success-accent: #10b981;
-  --danger: #ef4444;
+  /* Neoon aktsentvärvid ja gradiendid */
+  --primary: #a855f7;
+  --primary-hover: #c026d3;
+  --primary-glow: rgba(217, 70, 239, 0.45);
+  --accent: #ec4899;
+  --accent-pink: #f472b6;
+  --accent-cyan: #38bdf8;
+  --accent-orange: #fb923c;
+  --danger: #f43f5e;
+  --success: #10b981;
 
-  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --neon-gradient: linear-gradient(90deg, #7c3aed 0%, #c026d3 52%, #ec4899 100%);
+  --card-gradient: linear-gradient(160deg, rgba(28, 34, 74, 0.92) 0%, rgba(15, 20, 42, 0.96) 100%);
+  --bg-radial: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%);
 
-  --radius-xl: 24px;
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-pill: 9999px;
-}
+  /* Tekstivärvid */
+  --text-main: #f8fafc;
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  -webkit-tap-highlight-color: transparent;
-}
-
-html, body {
-  width: 100vw;
-  height: 100dvh;
-  overflow: hidden;
-  background-color: var(--bg-deep);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  user-select: none;
-}
-
-.steps-big-number,
-.ring-percent,
-.mini-metric span,
-.stat-value,
-.dial-big-input {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Peida eemaldatud kellaühenduste vaade ja alumise HUD-i pluss-nupp */
-#syncModal,
-.nav-item[data-target="syncModal"],
-#quickAddStepsBtn {
-  display: none !important;
-}
-
-/* Ühtsed Lucide'i SVG jooneikoonid nuppude sees */
-.gw-inline-icon {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  fill: none;
-  flex-shrink: 0;
-}
-
-.gw-inline-icon.sm {
-  width: 14px;
-  height: 14px;
-}
-
-.gw-inline-icon.lg {
-  width: 18px;
-  height: 18px;
-}
-
-.gw-spin {
-  animation: gwSpin 0.9s linear infinite;
-}
-
-@keyframes gwSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  /* Äärised, raadiused ja varjud */
+  --border-color: rgba(168, 85, 247, 0.32);
+  --border-subtle: rgba(168, 85, 247, 0.24);
+  --border-neon: rgba(236, 72, 153, 0.5);
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 26px;
+  --radius-pill: 999px;
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-neon: 0 6px 20px rgba(217, 70, 239, 0.42);
 }
