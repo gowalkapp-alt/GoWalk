@@ -321,30 +321,26 @@ function renderDialPosition(formatInputDisplay = true) {
     captionEl.textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
   }
   if (bigInputEl && formatInputDisplay && document.activeElement !== bigInputEl) {
-    bigInputEl.value = activeVal.toLocaleString('et-EE');
-  }
+          bigInputEl.value = activeVal.toLocaleString('et-EE');
+        }
 
-  const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
-  if (unitSubEl) {
-    unitSubEl.textContent = `sammu • ~${activeKm} km`;
-  }
+        const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
+        if (unitSubEl) {
+          unitSubEl.textContent = 'sammu • ~' + activeKm + ' km';
+        }
 
-  const missing = Math.max(0, tempGoalSteps - tempWalkedSteps);
-  const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
+        const missing = Math.max(0, tempGoalSteps - tempWalkedSteps);
+        const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
 
-  if (missingSummaryEl) {
-    if (missing > 0) {
-      missingSummaryEl.textContent = `Puudu: ${missing.toLocaleString('et-EE')} sammu (~${missingKm} km)`;
-    } else {
-      missingSummaryEl.textContent = 'Päeva eesmärk täidetud ✓';
+        if (missingSummaryEl) {
+          if (missing > 0) {
+            missingSummaryEl.textContent = 'Puudu: ' + missing.toLocaleString('et-EE') + ' sammu (~' + missingKm + ' km)';
+          } else {
+            missingSummaryEl.textContent = 'Päeva eesmärk täidetud ✓';
+          }
+        }
+      });
     }
-  }
-
-  if (routeBtnEl) {
-    const btnText =
-      missing > 0
-        ? `Salvesta & koosta ${missing.toLocaleString('et-EE')} sammu ring`
-        : 'Salvesta & koosta lisaring (3 000)';
-    routeBtnEl.innerHTML = `${LUCIDE_SVGS.sparkles}<span>${btnText}</span>`;
-  }
+  });
 }
+  
