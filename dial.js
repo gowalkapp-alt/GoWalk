@@ -348,3 +348,54 @@ function renderDialPosition(formatInputDisplay = true) {
     routeBtnEl.innerHTML = `${LUCIDE_SVGS.sparkles}<span>${btnText}</span>`;
   }
 }
+
+/* ==========================================================================
+   MIDNIGHT INDIGO STEP DIAL MODAL OVERRIDES
+   ========================================================================== */
+
+[id*="dial" i] .modal-card,
+[id*="dial" i] .dial-card,
+[class*="dial-modal"] > div,
+.dial-container,
+.dial-content,
+.dial-modal-card {
+  background: linear-gradient(165deg, rgba(28, 34, 74, 0.96) 0%, rgba(15, 20, 42, 0.98) 100%) !important;
+  border: 1px solid rgba(236, 72, 153, 0.42) !important;
+  border-radius: 26px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 28px rgba(168, 85, 247, 0.25) !important;
+}
+
+[id*="dial" i] svg circle[stroke-dasharray],
+[class*="dial"] svg circle[stroke-dasharray],
+[id*="dial" i] svg circle:nth-of-type(2),
+#dialProgressRing,
+.dial-progress-ring {
+  stroke: #ec4899 !important;
+  filter: drop-shadow(0 0 10px rgba(236, 72, 153, 0.7)) !important;
+}
+
+[id*="dial" i] [id*="thumb" i],
+[id*="dial" i] [class*="thumb" i],
+[class*="dial"] [class*="thumb" i],
+#dialThumb {
+  background: #ffffff !important;
+  border: 4px solid #ec4899 !important;
+  box-shadow: 0 0 16px rgba(236, 72, 153, 0.85) !important;
+}
+
+.dial-step-btn,
+.quick-step-btn {
+  background: rgba(26, 31, 66, 0.92) !important;
+  border: 1px solid rgba(168, 85, 247, 0.36) !important;
+  color: #fff !important;
+  border-radius: 14px !important;
+  font-weight: 700 !important;
+}
+
+#saveStepsOnlyBtn,
+#dialSaveOnlyBtn {
+  background: rgba(22, 27, 58, 0.92) !important;
+  border: 1px solid rgba(168, 85, 247, 0.34) !important;
+  color: #e2e8f0 !important;
+  border-radius: 999px !important;
+}
