@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAP.JS (TÄIELIK KAARDI, TÄPPIS-GPS JA MARSRUUTIDE MOODUL)
+   GOWALK PRO — MAP.JS (VÕTMEVABA TUME KAART, TÄPPIS-GPS & MARSRUUDID)
    ========================================================================== */
 
 import { state, saveState, getMissingSteps } from './state.js';
@@ -7,6 +7,7 @@ import { state, saveState, getMissingSteps } from './state.js';
 export let map = null;
 
 let currentTileLayer = null;
+let currentLabelsLayer = null;
 let pinAMarker = null;
 let waypointMarkers = [];
 let waypoints = [];
@@ -16,7 +17,7 @@ let lastGeneratedSteps = 0;
 let lastLoopAngleRad = null;
 let globalRunPrecisionGps = null;
 
-// Kui kasutaja on juba varem asukoha lukustanud, avame kaardi kohe seal (mitte Pärnus)
+// Kui kasutaja on juba varem asukoha lukustanud, avame kaardi kohe seal
 function getInitialStartCoords() {
   try {
     const raw = localStorage.getItem('gowalk_last_precise_gps');
@@ -33,22 +34,30 @@ function getInitialStartCoords() {
       }
     }
   } catch (e) {}
-  return [58.3859, 24.4971]; // Vaikimisi varuasukoht ainult siis, kui GPS pole veel vastanud
+  return [61.17, 25.55]; // Vaikimisi varuasukoht enne GPS-i lukustumist
 }
 
 let startCoords = getInitialStartCoords();
 
+// 100% API-võtmevabad kaardiserverid (ei mingit "API KEY REQUIRED" viga)
 const TILE_LAYERS = {
   dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    options: { maxZoom: 20, subdomains: 'abcd' }
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: {
+      maxZoom: 19,
+      className: 'gw-dark-osm-tiles'
+    }
   },
   light: {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    options: { maxZoom: 20, subdomains: 'abcd' }
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: {
+      maxZoom: 19,
+      className: 'gw-light-osm-tiles'
+    }
   },
   hybrid: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    labelsUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
     options: { maxZoom: 19 }
   },
   terrain: {
@@ -57,12 +66,35 @@ const TILE_LAYERS = {
   }
 };
 
-function injectRouteBarAndPinStyles() {
+function injectMapAndHudFixes() {
   if (document.getElementById('gw-map-route-bar-fixes')) return;
   const st = document.createElement('style');
   st.id = 'gw-map-route-bar-fixes';
   st.textContent = [
-    /* Pin A ja teekonnapunktide ikoonid */
+    /* 1. Midnight Indigo tume filter OSM kaardile (väldib Carto API KEY REQUIRED viga) */
+    '.gw-dark-osm-tiles {',
+    '  filter: invert(100%) hue-rotate(195deg) brightness(92%) contrast(92%) saturate(130%) !important;',
+    '}',
+    '.leaflet-container {',
+    '  background: #0b0f22 !important;',
+    '}',
+
+    /* 2. Tagame, et alumine sammulugeja HUD kaart on alati nähtav */
+    '.hud-card, .bottom-hud, #bottomHud {',
+    '  display: flex !important;',
+    '  flex-direction: column !important;',
+    '  visibility: visible !important;',
+    '  opacity: 1 !important;',
+    '  z-index: 2200 !important;',
+    '  bottom: 74px !important;',
+    '}',
+
+    /* 3. Parempoolsete kaardinuppude paigutus ("Maastik" nupust allapoole) */
+    '.map-controls, .floating-controls, .right-controls, .map-actions, .map-tools {',
+    '  top: 132px !important;',
+    '}',
+
+    /* 4. Pin A ja teekonnapunktide ikoonid */
     '.gw-pin-a-marker {',
     '  width: 34px; height: 34px; border-radius: 50%;',
     '  background: linear-gradient(135deg, #7c3aed, #ec4899);',
@@ -79,7 +111,8 @@ function injectRouteBarAndPinStyles() {
     '  display: flex; align-items: center; justify-content: center;',
     '  box-shadow: 0 3px 12px rgba(124, 58, 237, 0.65);',
     '}',
-    /* "Rada: ... | Teine suund" kasti puhas paigutus HUD kaardi kohal */
+
+    /* 5. "Rada: ... | Teine suund" kasti puhas paigutus HUD kaardi kohal */
     '#routeInfoBar, #routeInfoPill, .route-info-bar, .route-info-pill, .route-summary-pill, .gw-route-bar-fixed {',
     '  position: fixed !important;',
     '  left: 50% !important;',
@@ -131,6 +164,10 @@ function injectRouteBarAndPinStyles() {
 
 export function alignRouteInfoBarAboveHud() {
   const hudCard = document.querySelector('.hud-card, .bottom-hud, #bottomHud');
+  if (hudCard) {
+    hudCard.classList.remove('hidden');
+  }
+
   let routeBar =
     document.getElementById('routeInfoBar') ||
     document.getElementById('routeInfoPill') ||
@@ -174,15 +211,24 @@ export function switchMapLayer(layerKey) {
 
   if (currentTileLayer) {
     map.removeLayer(currentTileLayer);
+    currentTileLayer = null;
   }
+  if (currentLabelsLayer) {
+    map.removeLayer(currentLabelsLayer);
+    currentLabelsLayer = null;
+  }
+
   currentTileLayer = L.tileLayer(cfg.url, cfg.options).addTo(map);
+  if (cfg.labelsUrl) {
+    currentLabelsLayer = L.tileLayer(cfg.labelsUrl, { maxZoom: 19 }).addTo(map);
+  }
 
   if (state && state.settings) {
     state.settings.mapLayer = key;
     saveState();
   }
 
-  const pills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer]');
+  const pills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer], [data-style]');
   for (let i = 0; i < pills.length; i++) {
     const pKey = pills[i].getAttribute('data-layer') || pills[i].getAttribute('data-style');
     if (pKey) {
@@ -245,8 +291,7 @@ function getOrCreateRouteInfoBar() {
       altBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const stepsToUse = lastGeneratedSteps > 0 ? lastGeneratedSteps : Math.max(1500, getMissingSteps());
-        generateLoopRouteForSteps(stepsToUse);
+        generateAlternativeRoute();
       });
     }
   } else {
@@ -261,8 +306,7 @@ function getOrCreateRouteInfoBar() {
       existingAltBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        const stepsToUse = lastGeneratedSteps > 0 ? lastGeneratedSteps : Math.max(1500, getMissingSteps());
-        generateLoopRouteForSteps(stepsToUse);
+        generateAlternativeRoute();
       });
     }
   }
@@ -382,7 +426,6 @@ async function fetchAndDrawOsrmRoute(pointsArray, fitMapBounds) {
     }
   } catch (e) {}
 
-  // Varuvariant: kui OSRM ei vasta, joonistame sirge ühenduse
   let fallbackDist = 0;
   for (let i = 1; i < pointsArray.length; i++) {
     fallbackDist += map.distance(pointsArray[i - 1], pointsArray[i]);
@@ -399,11 +442,9 @@ export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, 
   const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
   const targetDistanceMeters = steps * strideMeters;
 
-  // Tänavavõrgu tegur (teed on ~1.38x pikemad kui linnulennult ring)
   const effectiveCircumference = targetDistanceMeters / 1.38;
   const radiusMeters = Math.max(80, effectiveCircumference / (2 * Math.PI));
 
-  // Kui kasutaja vajutab "Teine suund", keerame ringi suunda 95 kraadi võrra
   if (lastLoopAngleRad === null) {
     lastLoopAngleRad = Math.random() * 2 * Math.PI;
   } else {
@@ -418,7 +459,6 @@ export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, 
   const metersPerDegLat = 111320;
   const metersPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
 
-  // Ringi keskpunkt on startCoords-ist radiusMeters kaugusel suunas baseAngle
   const centerLat = lat0 + (radiusMeters * Math.cos(baseAngle)) / metersPerDegLat;
   const centerLng = lng0 + (radiusMeters * Math.sin(baseAngle)) / metersPerDegLng;
 
@@ -438,6 +478,11 @@ export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, 
 
   const fullLoopPoints = [startCoords].concat(waypoints).concat([startCoords]);
   await fetchAndDrawOsrmRoute(fullLoopPoints, true);
+}
+
+export function generateAlternativeRoute() {
+  const stepsToUse = lastGeneratedSteps > 0 ? lastGeneratedSteps : Math.max(1500, getMissingSteps());
+  return generateLoopRouteForSteps(stepsToUse);
 }
 
 export function clearCurrentRoute() {
@@ -460,7 +505,7 @@ export function undoLastWaypoint() {
 }
 
 export function initMapAndRouting(updateHudFn) {
-  injectRouteBarAndPinStyles();
+  injectMapAndHudFixes();
 
   const mapContainer = document.getElementById('map');
   if (!mapContainer || !window.L) return;
@@ -489,7 +534,6 @@ export function initMapAndRouting(updateHudFn) {
     }
   });
 
-  // Kaardil klõpsates saab kasutaja lisada oma vahepunkte
   map.on('click', function (e) {
     waypoints.push([e.latlng.lat, e.latlng.lng]);
     rebuildWaypointMarkers();
@@ -497,8 +541,7 @@ export function initMapAndRouting(updateHudFn) {
     fetchAndDrawOsrmRoute(pts, false);
   });
 
-  // Ülemised kaardistiili nupud (Tume, Hele, Hübriid, Maastik)
-  const layerPills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer]');
+  const layerPills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer], [data-style]');
   for (let i = 0; i < layerPills.length; i++) {
     layerPills[i].addEventListener('click', function () {
       const lKey = this.getAttribute('data-layer') || this.getAttribute('data-style') || 'dark';
@@ -506,7 +549,6 @@ export function initMapAndRouting(updateHudFn) {
     });
   }
 
-  // Tagasivõtmise (Undo) ja Kustutamise (Trash) nupud paremal servas
   const undoBtn =
     document.getElementById('undoWaypointBtn') ||
     document.getElementById('undoRouteBtn') ||
@@ -531,11 +573,15 @@ export function initMapAndRouting(updateHudFn) {
 
   getOrCreateRouteInfoBar();
 
-  // Küsi kohe kaardi valmimisel kasutaja päris asukohta (viib Soome!)
+  if (typeof updateHudFn === 'function') {
+    updateHudFn();
+  }
+
+  // Küsi kohe äpi avamisel kasutaja päris asukohta
   if (typeof globalRunPrecisionGps === 'function') {
     setTimeout(function () {
       globalRunPrecisionGps(null, null);
-    }, 250);
+    }, 300);
   }
 }
 
@@ -544,7 +590,7 @@ export function initMapAndRouting(updateHudFn) {
    ========================================================================== */
 
 export function setupPrecisionGpsLocator() {
-  injectRouteBarAndPinStyles();
+  injectMapAndHudFixes();
 
   window.addEventListener('resize', alignRouteInfoBarAboveHud);
   document.addEventListener('click', function () {
@@ -679,8 +725,6 @@ export function setupPrecisionGpsLocator() {
       function (pos) {
         const acc = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
 
-        // Viime kaardi kohe esimese GPS-signaaliga kasutaja tegelikku asukohta (nt Soome)
-        // ja täpsustame edasi, kui tuleb veel täpsem signaal
         if (!hasMovedToRealLocationThisSession || !bestPos || acc < bestAccuracy) {
           bestAccuracy = Math.min(bestAccuracy, acc);
           bestPos = pos;
