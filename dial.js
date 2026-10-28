@@ -1,346 +1,287 @@
 /* ==========================================================================
-   GOWALK PRO — 4. 360° INTERACTIVE STEP DIAL PICKER & INLINE INPUT
+   GOWALK PRO — DIAL.JS (STEP DIAL MODAL & STRIDE CALCULATOR)
    ========================================================================== */
 
-import { LUCIDE_SVGS } from './config.js';
 import { state, saveState, getMissingSteps } from './state.js';
+import { generateLoopRouteForSteps } from './map.js';
 
-const DIAL_RADIUS = 92;
-const DIAL_CIRCUMFERENCE = 2 * Math.PI * DIAL_RADIUS;
-let dialMode = 'walked'; // 'walked' | 'goal'
-let tempWalkedSteps = 0;
-let tempGoalSteps = 10000;
-let isDraggingDial = false;
+const LUCIDE_SVGS = {
+  sparkles: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.2 1.2L3 12l5.8 1.9a2 2 0 0 1 1.2 1.2L12 21l1.9-5.8a2 2 0 0 1 1.2-1.2L21 12l-5.8-1.9a2 2 0 0 1-1.2-1.2Z"/></svg>'
+};
 
-export function setupStepDialModal(onHudUpdate, onGenerateRoute) {
-  const backdrop = document.createElement('div');
-  backdrop.id = 'stepDialBackdrop';
-  backdrop.className = 'step-dial-backdrop';
-  backdrop.innerHTML = `
-    <div class="step-dial-card">
-      <div class="step-dial-top">
-        <div class="step-dial-tabs">
-          <button type="button" class="dial-tab-btn active" data-dial-tab="walked">Täna tehtud</button>
-          <button type="button" class="dial-tab-btn" data-dial-tab="goal">Päeva eesmärk</button>
-        </div>
-        <button type="button" id="closeStepDialBtn" class="icon-btn" style="width:34px;height:34px;">
-          ${LUCIDE_SVGS.close}
-        </button>
-      </div>
+export function setupStepDialModal(updateHudFn, generateRouteFn) {
+  const openBtn = document.getElementById('openStepDialBtn') || document.getElementById('openGeneratorBtn');
+  let modal = document.getElementById('stepDialModal') || document.getElementById('dialModal');
 
-      <div class="dial-wheel-wrap" id="dialWheelWrap">
-        <svg class="dial-svg" viewBox="0 0 224 224">
-          <defs>
-            <linearGradient id="dialVioletGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#c084fc" />
-              <stop offset="100%" stop-color="#7c3aed" />
-            </linearGradient>
-          </defs>
-          <circle class="dial-track-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
-          <circle class="dial-ticks-circle" cx="112" cy="112" r="${DIAL_RADIUS}"></circle>
-          <circle id="dialProgressCircle" class="dial-progress-circle" cx="112" cy="112" r="${DIAL_RADIUS}"
-            stroke-dasharray="${DIAL_CIRCUMFERENCE.toFixed(2)}"
-            stroke-dashoffset="${DIAL_CIRCUMFERENCE.toFixed(2)}"></circle>
-          <circle id="dialThumbHandle" class="dial-thumb-handle" cx="112" cy="20" r="11"></circle>
-        </svg>
-
-        <div class="dial-center-readout">
-          <span class="dial-mode-caption" id="dialModeCaption">Täna tehtud</span>
-          <input
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9 ]*"
-            id="dialBigValue"
-            class="dial-big-input"
-            value="0"
-            aria-label="Sammude arv"
-          />
-          <span class="dial-unit-sub" id="dialUnitSub">sammu • ~0.00 km</span>
-          <div class="dial-missing-summary" id="dialMissingSummary">Puudu: 10 000 sammu</div>
-        </div>
-      </div>
-
-      <div class="dial-steppers-row">
-        <button type="button" class="dial-step-btn" data-delta="-500">-500</button>
-        <button type="button" class="dial-step-btn" data-delta="-100">-100</button>
-        <button type="button" class="dial-step-btn" data-delta="100">+100</button>
-        <button type="button" class="dial-step-btn" data-delta="500">+500</button>
-      </div>
-
-      <div class="dial-actions-col">
-        <button type="button" id="dialSaveAndRouteBtn" class="btn-dial-primary-route"></button>
-        <button type="button" id="dialSaveOnlyBtn" class="btn-dial-secondary-save">
-          Salvesta sammud
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(backdrop);
-
-  const primaryLine = document.querySelector('.primary-step-line');
-  const stepRingContainer = document.querySelector('.step-ring-container');
-
-  if (primaryLine) {
-    let hintBadge = primaryLine.querySelector('.step-dial-trigger-hint');
-    if (!hintBadge) {
-      hintBadge = document.createElement('span');
-      hintBadge.id = 'hudMissingHintBadge';
-      hintBadge.className = 'step-dial-trigger-hint';
-      hintBadge.textContent = 'Muuda';
-      primaryLine.appendChild(hintBadge);
-    }
-    primaryLine.addEventListener('click', () => openStepDial('walked'));
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'stepDialModal';
+    modal.className = 'subview-modal gw-rb-modal';
+    modal.innerHTML = [
+      '<div class="gw-rb-head">',
+        '<button type="button" class="gw-rb-back" id="closeDialBtn"><i data-lucide="arrow-left"></i></button>',
+        '<span class="gw-rb-title">Sammuratas & Eesmärk</span>',
+      '</div>',
+      '<div class="gw-rb-valbox">',
+        '<input type="text" id="dialBigInput" class="gw-rb-bigval" style="background:transparent;border:none;color:#fff;text-align:center;width:100%;font:inherit;font-size:2.2rem;font-weight:800;" value="5 000" />',
+        '<span class="gw-rb-unit" id="dialUnitSub">sammu • ~3.8 km</span>',
+      '</div>',
+      '<div class="gw-rb-sub" id="dialMissingSummary" style="text-align:center;color:#f472b6;margin-bottom:16px;">Puudu: 5 000 sammu</div>',
+      '<input type="range" id="dialRangeSlider" class="gw-rb-slider" min="500" max="25000" step="250" value="5000" />',
+      '<div class="gw-rb-marks"><span>500</span><span>5K</span><span>10K</span><span>15K</span><span>20K</span><span>25K</span></div>',
+      '<div style="margin-top:20px;">',
+        '<button type="button" class="gw-rb-cta" id="dialSaveAndRouteBtn">',
+          LUCIDE_SVGS.sparkles,
+          '<span>Salvesta & koosta liikumisring</span>',
+        '</button>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(modal);
   }
 
-  if (stepRingContainer) {
-    stepRingContainer.addEventListener('click', () => openStepDial('walked'));
-  }
+  const closeBtn = modal.querySelector('#closeDialBtn') || modal.querySelector('.close-subview');
+  const bigInputEl = modal.querySelector('#dialBigInput');
+  const sliderEl = modal.querySelector('#dialRangeSlider');
+  const unitSubEl = modal.querySelector('#dialUnitSub');
+  const missingSummaryEl = modal.querySelector('#dialMissingSummary');
+  const routeBtnEl = modal.querySelector('#dialSaveAndRouteBtn');
 
-  const quickSyncBtn = document.getElementById('quickSyncBtn');
-  if (quickSyncBtn) {
-    quickSyncBtn.title = 'Ava sammuketas';
-    quickSyncBtn.addEventListener('click', () => openStepDial('walked'));
-  }
-
-  backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      dialMode = btn.getAttribute('data-dial-tab');
-      backdrop.querySelectorAll('.dial-tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderDialPosition(true);
-    });
-  });
-
-  document.getElementById('closeStepDialBtn').addEventListener('click', closeStepDial);
-  backdrop.addEventListener('click', e => {
-    if (e.target === backdrop) closeStepDial();
-  });
-
-  backdrop.querySelectorAll('.dial-step-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const delta = parseInt(btn.getAttribute('data-delta'), 10);
-      if (dialMode === 'walked') {
-        tempWalkedSteps = Math.max(0, Math.min(100000, tempWalkedSteps + delta));
-      } else {
-        tempGoalSteps = Math.max(1000, Math.min(100000, tempGoalSteps + delta));
-      }
-      renderDialPosition(true);
-    });
-  });
-
-  // Otse ketta keskel muudetav sisestusväli (Inline Input ilma prompt() aknata)
-  const bigInputEl = document.getElementById('dialBigValue');
-
-  bigInputEl.addEventListener('focus', () => {
-    const currentVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
-    bigInputEl.value = String(currentVal);
-    setTimeout(() => bigInputEl.select(), 20);
-  });
-
-  bigInputEl.addEventListener('input', () => {
-    const rawDigits = bigInputEl.value.replace(/[^0-9]/g, '');
-    const parsed = rawDigits === '' ? 0 : Math.min(100000, parseInt(rawDigits, 10));
-    if (dialMode === 'walked') {
-      tempWalkedSteps = Math.max(0, parsed);
-    } else {
-      tempGoalSteps = Math.max(500, parsed);
-    }
-    renderDialPosition(false);
-  });
-
-  bigInputEl.addEventListener('blur', () => {
-    if (dialMode === 'goal' && tempGoalSteps < 1000) {
-      tempGoalSteps = 1000;
-    }
-    renderDialPosition(true);
-  });
-
-  bigInputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      bigInputEl.blur();
-    }
-  });
-
-  // 360° radiaalne ketta pööramine
-  const wheelWrap = document.getElementById('dialWheelWrap');
-
-  const updateFromPointer = (clientX, clientY) => {
-    const rect = wheelWrap.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = clientX - cx;
-    const dy = clientY - cy;
-
-    let deg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    if (deg < 0) deg += 360;
-    const fraction = Math.max(0, Math.min(1, deg / 360));
-
-    if (dialMode === 'walked') {
-      const maxWalkScale = Math.max(15000, tempGoalSteps);
-      tempWalkedSteps = Math.round((fraction * maxWalkScale) / 100) * 100;
-    } else {
-      const maxGoalScale = 30000;
-      const rawGoal = 1000 + fraction * (maxGoalScale - 1000);
-      tempGoalSteps = Math.round(rawGoal / 500) * 500;
-    }
-    renderDialPosition(true);
-  };
-
-  wheelWrap.addEventListener('mousedown', e => {
-    if (e.target === bigInputEl) return;
-    if (document.activeElement === bigInputEl) bigInputEl.blur();
-    isDraggingDial = true;
-    updateFromPointer(e.clientX, e.clientY);
-  });
-
-  window.addEventListener('mousemove', e => {
-    if (!isDraggingDial) return;
-    updateFromPointer(e.clientX, e.clientY);
-  });
-
-  window.addEventListener('mouseup', () => {
-    isDraggingDial = false;
-  });
-
-  wheelWrap.addEventListener(
-    'touchstart',
-    e => {
-      if (e.target === bigInputEl) return;
-      if (document.activeElement === bigInputEl) bigInputEl.blur();
-      if (e.touches && e.touches[0]) {
-        isDraggingDial = true;
-        updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
-      }
-    },
-    { passive: true }
-  );
-
-  wheelWrap.addEventListener(
-    'touchmove',
-    e => {
-      if (!isDraggingDial || !e.touches || !e.touches[0]) return;
-      updateFromPointer(e.touches[0].clientX, e.touches[0].clientY);
-    },
-    { passive: true }
-  );
-
-  wheelWrap.addEventListener(
-    'touchend',
-    () => {
-      isDraggingDial = false;
-    },
-    { passive: true }
-  );
-
-  const commitDialValues = () => {
-    const strideMeters = (state.settings.strideCm || 76) / 100;
-    state.today.steps = Math.max(0, tempWalkedSteps);
-    state.today.distanceKm = +((state.today.steps * strideMeters) / 1000).toFixed(2);
-    state.today.calories = Math.round(state.today.steps * 0.04);
-    state.settings.stepGoal = Math.max(1000, tempGoalSteps);
-
-    const settingStepGoalEl = document.getElementById('settingStepGoal');
-    if (settingStepGoalEl) settingStepGoalEl.value = state.settings.stepGoal;
-
-    saveState();
-    if (onHudUpdate) onHudUpdate();
-  };
-
-  document.getElementById('dialSaveOnlyBtn').addEventListener('click', () => {
-    commitDialValues();
-    closeStepDial();
-  });
-
-  document.getElementById('dialSaveAndRouteBtn').addEventListener('click', () => {
-    commitDialValues();
-    closeStepDial();
+  function openDial() {
     const missing = getMissingSteps();
-    const stepsToGenerate = missing >= 300 ? missing : 3000;
-    if (onGenerateRoute) onGenerateRoute(stepsToGenerate);
-  });
+    const currentGoal = (state.settings && state.settings.stepGoal) || 10000;
+    const initSteps = missing > 0 ? Math.min(25000, Math.max(500, missing)) : 5000;
+
+    if (sliderEl) sliderEl.value = String(initSteps);
+    if (bigInputEl) bigInputEl.value = initSteps.toLocaleString('et-EE');
+
+    const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
+    const kmVal = ((initSteps * strideMeters) / 1000).toFixed(2);
+    if (unitSubEl) unitSubEl.textContent = 'sammu • ~' + kmVal + ' km';
+
+    if (missingSummaryEl) {
+      missingSummaryEl.textContent = missing > 0 ? 'Puudu: ' + missing.toLocaleString('et-EE') + ' sammu' : 'Päeva eesmärk täidetud ✓';
+    }
+
+    modal.classList.add('open');
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (openBtn) {
+    openBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      openDial();
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function () {
+      modal.classList.remove('open');
+    });
+  }
+
+  if (sliderEl && bigInputEl) {
+    sliderEl.addEventListener('input', function () {
+      const val = parseInt(sliderEl.value, 10) || 1000;
+      bigInputEl.value = val.toLocaleString('et-EE');
+      const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
+      const kmVal = ((val * strideMeters) / 1000).toFixed(2);
+      if (unitSubEl) unitSubEl.textContent = 'sammu • ~' + kmVal + ' km';
+    });
+  }
+
+  if (routeBtnEl) {
+    routeBtnEl.addEventListener('click', function () {
+      const val = parseInt(String(bigInputEl.value).replace(/\s/g, ''), 10) || 5000;
+      modal.classList.remove('open');
+      if (typeof generateRouteFn === 'function') {
+        generateRouteFn(val);
+      }
+    });
+  }
 }
 
-export function openStepDial(initialMode = 'walked') {
-  const backdrop = document.getElementById('stepDialBackdrop');
-  if (!backdrop) return;
-  dialMode = initialMode;
-  tempWalkedSteps = state.today.steps || 0;
-  tempGoalSteps = state.settings.stepGoal || 10000;
+export function setupStrideCalculator(appState, saveStateFn, updateHudFn) {
+  const strideInput = document.getElementById('settingStrideLength');
+  if (!strideInput) return;
 
-  backdrop.querySelectorAll('.dial-tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-dial-tab') === dialMode);
-  });
-
-  renderDialPosition(true);
-  backdrop.classList.add('open');
-}
-
-export function closeStepDial() {
-  const backdrop = document.getElementById('stepDialBackdrop');
-  const bigInputEl = document.getElementById('dialBigValue');
-  if (bigInputEl && document.activeElement === bigInputEl) {
-    bigInputEl.blur();
-  }
-  if (backdrop) backdrop.classList.remove('open');
-}
-
-function renderDialPosition(formatInputDisplay = true) {
-  const progressCircle = document.getElementById('dialProgressCircle');
-  const thumbHandle = document.getElementById('dialThumbHandle');
-  const captionEl = document.getElementById('dialModeCaption');
-  const bigInputEl = document.getElementById('dialBigValue');
-  const unitSubEl = document.getElementById('dialUnitSub');
-  const missingSummaryEl = document.getElementById('dialMissingSummary');
-  const routeBtnEl = document.getElementById('dialSaveAndRouteBtn');
-
-  const strideMeters = (state.settings.strideCm || 76) / 100;
-  const activeVal = dialMode === 'walked' ? tempWalkedSteps : tempGoalSteps;
-  const maxRef =
-    dialMode === 'walked'
-      ? Math.max(15000, tempGoalSteps, tempWalkedSteps)
-      : Math.max(30000, tempGoalSteps);
-  const minRef = dialMode === 'walked' ? 0 : 1000;
-
-  const fraction = Math.max(0, Math.min(1, (activeVal - minRef) / Math.max(1, maxRef - minRef)));
-  const offset = DIAL_CIRCUMFERENCE - fraction * DIAL_CIRCUMFERENCE;
-  if (progressCircle) {
-    progressCircle.style.strokeDashoffset = offset.toFixed(2);
+  const parentCard = strideInput.closest('.setting-item, .setting-row, .settings-card') || strideInput.parentElement;
+  if (parentCard) {
+    parentCard.classList.add('gw-stride-row-card');
+    if (!document.getElementById('openStrideCalcBtn')) {
+      const trigBtn = document.createElement('button');
+      trigBtn.type = 'button';
+      trigBtn.id = 'openStrideCalcBtn';
+      trigBtn.className = 'gw-stride-calc-trigger';
+      trigBtn.innerHTML = '<i data-lucide="calculator"></i><span>Arvuta oma täpne sammupikkus</span>';
+      parentCard.appendChild(trigBtn);
+    }
   }
 
-  const angleRad = (fraction * 360 - 90) * (Math.PI / 180);
-  const tx = 112 + DIAL_RADIUS * Math.cos(angleRad);
-  const ty = 112 + DIAL_RADIUS * Math.sin(angleRad);
-  if (thumbHandle) {
-    thumbHandle.setAttribute('cx', tx.toFixed(2));
-    thumbHandle.setAttribute('cy', ty.toFixed(2));
-  }
+  if (!document.getElementById('gwStrideCalcOverlay')) {
+    const ov = document.createElement('div');
+    ov.id = 'gwStrideCalcOverlay';
+    ov.className = 'gw-calc-overlay';
+    ov.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title"><i data-lucide="footprints" style="color:#ec4899;"></i> Sammupikkuse kalkulaator</span>',
+          '<button type="button" class="gw-calc-close" id="gwCalcCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div class="gw-calc-tabs">',
+          '<button type="button" class="gw-calc-tab active" data-cmode="height">Pikkuse järgi</button>',
+          '<button type="button" class="gw-calc-tab" data-cmode="test">10 sammu test</button>',
+        '</div>',
+        '<div id="gwCalcHeightPane" style="display:flex;flex-direction:column;gap:12px;">',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Sugu</span></span>',
+            '<div class="gw-calc-opts" id="gwCalcGenderGroup">',
+              '<button type="button" class="gw-calc-opt active" data-gender="m">Mees (×0.415)</button>',
+              '<button type="button" class="gw-calc-opt" data-gender="f">Naine (×0.413)</button>',
+            '</div>',
+          '</div>',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Sinu pikkus</span><strong id="gwCalcHeightVal" style="color:#fff;">180 cm</strong></span>',
+            '<input type="range" id="gwCalcHeightSlider" class="gw-rb-slider" min="140" max="210" step="1" value="180" />',
+          '</div>',
+        '</div>',
+        '<div class="gw-calc-resbox">',
+          '<div>',
+            '<div style="font-size:0.74rem;color:#cbd5e1;font-weight:600;">Arvutatud sammupikkus</div>',
+          '</div>',
+          '<span class="gw-calc-resval" id="gwCalcResultCm">75 cm</span>',
+        '</div>',
+        '<button type="button" class="gw-calc-apply" id="gwCalcSaveBtn">Salvesta sammupikkus</button>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(ov);
 
-  if (captionEl) {
-    captionEl.textContent = dialMode === 'walked' ? 'Täna tehtud' : 'Päeva eesmärk';
-  }
-  if (bigInputEl && formatInputDisplay && document.activeElement !== bigInputEl) {
-          bigInputEl.value = activeVal.toLocaleString('et-EE');
-        }
+    let calcMode = 'height';
+    let genderFactor = 0.415;
+    let heightCm = 180;
+    let calculatedCm = (appState.settings && appState.settings.strideCm) || 76;
 
-        const activeKm = ((activeVal * strideMeters) / 1000).toFixed(2);
-        if (unitSubEl) {
-          unitSubEl.textContent = 'sammu • ~' + activeKm + ' km';
-        }
+    function recompute() {
+      calculatedCm = Math.max(45, Math.min(115, Math.round(heightCm * genderFactor)));
+      const resEl = document.getElementById('gwCalcResultCm');
+      if (resEl) resEl.textContent = calculatedCm + ' cm';
+    }
 
-        const missing = Math.max(0, tempGoalSteps - tempWalkedSteps);
-        const missingKm = ((missing * strideMeters) / 1000).toFixed(2);
-
-        if (missingSummaryEl) {
-          if (missing > 0) {
-            missingSummaryEl.textContent = 'Puudu: ' + missing.toLocaleString('et-EE') + ' sammu (~' + missingKm + ' km)';
-          } else {
-            missingSummaryEl.textContent = 'Päeva eesmärk täidetud ✓';
-          }
-        }
+    const hSlider = document.getElementById('gwCalcHeightSlider');
+    if (hSlider) {
+      hSlider.addEventListener('input', function () {
+        heightCm = parseInt(hSlider.value, 10) || 180;
+        document.getElementById('gwCalcHeightVal').textContent = heightCm + ' cm';
+        recompute();
       });
     }
-  });
+
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.closest('#gwCalcCloseBtn')) {
+        ov.classList.remove('open');
+        return;
+      }
+      const gBtn = e.target.closest('[data-gender]');
+      if (gBtn) {
+        genderFactor = gBtn.getAttribute('data-gender') === 'f' ? 0.413 : 0.415;
+        const gAll = ov.querySelectorAll('[data-gender]');
+        for (let i = 0; i < gAll.length; i++) gAll[i].classList.remove('active');
+        gBtn.classList.add('active');
+        recompute();
+        return;
+      }
+      if (e.target.closest('#gwCalcSaveBtn')) {
+        appState.settings.strideCm = calculatedCm;
+        strideInput.value = String(calculatedCm);
+        if (typeof saveStateFn === 'function') saveStateFn();
+        if (typeof updateHudFn === 'function') updateHudFn();
+        ov.classList.remove('open');
+      }
+    });
+  }
+
+  const openBtn = document.getElementById('openStrideCalcBtn');
+  if (openBtn) {
+    openBtn.onclick = function () {
+      const ov = document.getElementById('gwStrideCalcOverlay');
+      if (ov) {
+        ov.classList.add('open');
+        if (window.lucide) window.lucide.createIcons();
+      }
+    };
+  }
 }
-  
+
+export function setupCustomMapStylePicker(appState, saveStateFn, switchMapLayerFn) {
+  const selectEl = document.getElementById('settingMapStyle');
+  if (!selectEl) return;
+
+  const styleMeta = {
+    dark: { title: 'Tume (Pro Dark)', icon: 'moon' },
+    light: { title: 'Hele (Tavaline)', icon: 'sun' },
+    hybrid: { title: 'Hübriid (Satelliit)', icon: 'layers' },
+    terrain: { title: 'Maastik (Reljeef)', icon: 'mountain' }
+  };
+
+  let trigBtn = document.getElementById('gwCustomMapSelectBtn');
+  if (!trigBtn) {
+    trigBtn = document.createElement('button');
+    trigBtn.type = 'button';
+    trigBtn.id = 'gwCustomMapSelectBtn';
+    trigBtn.className = 'gw-map-select-trigger';
+    selectEl.parentNode.insertBefore(trigBtn, selectEl.nextSibling);
+  }
+
+  function updateTriggerLabel() {
+    const curVal = selectEl.value || (appState.settings && appState.settings.mapLayer) || 'dark';
+    const m = styleMeta[curVal] || styleMeta.dark;
+    trigBtn.innerHTML = '<i data-lucide="' + m.icon + '"></i><span>' + m.title + '</span>';
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  updateTriggerLabel();
+
+  if (!document.getElementById('gwMapStyleOverlay')) {
+    const ov = document.createElement('div');
+    ov.id = 'gwMapStyleOverlay';
+    ov.className = 'gw-calc-overlay';
+    ov.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title"><i data-lucide="map" style="color:#ec4899;"></i> Vaikimisi kaardistiil</span>',
+          '<button type="button" class="gw-calc-close" id="gwMapStyleCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div class="gw-mstyle-list">',
+          '<button type="button" class="gw-mstyle-opt" data-mval="dark"><div class="gw-mstyle-ico"><i data-lucide="moon"></i></div><div class="gw-mstyle-title">Tume (Pro Dark)</div></button>',
+          '<button type="button" class="gw-mstyle-opt" data-mval="light"><div class="gw-mstyle-ico"><i data-lucide="sun"></i></div><div class="gw-mstyle-title">Hele (Tavaline)</div></button>',
+          '<button type="button" class="gw-mstyle-opt" data-mval="hybrid"><div class="gw-mstyle-ico"><i data-lucide="layers"></i></div><div class="gw-mstyle-title">Hübriid (Satelliit)</div></button>',
+          '<button type="button" class="gw-mstyle-opt" data-mval="terrain"><div class="gw-mstyle-ico"><i data-lucide="mountain"></i></div><div class="gw-mstyle-title">Maastik (Reljeef)</div></button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(ov);
+
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov || e.target.closest('#gwMapStyleCloseBtn')) {
+        ov.classList.remove('open');
+        return;
+      }
+      const optBtn = e.target.closest('.gw-mstyle-opt');
+      if (optBtn) {
+        const chosen = optBtn.getAttribute('data-mval') || 'dark';
+        selectEl.value = chosen;
+        appState.settings.mapLayer = chosen;
+        if (typeof saveStateFn === 'function') saveStateFn();
+        if (typeof switchMapLayerFn === 'function') switchMapLayerFn(chosen);
+        updateTriggerLabel();
+        ov.classList.remove('open');
+      }
+    });
+  }
+
+  trigBtn.onclick = function () {
+    const ov = document.getElementById('gwMapStyleOverlay');
+    if (!ov) return;
+    ov.classList.add('open');
+    if (window.lucide) window.lucide.createIcons();
+  };
+}
