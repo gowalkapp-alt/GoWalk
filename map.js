@@ -1,649 +1,1000 @@
 /* ==========================================================================
-   GOWALK PRO — 3. LEAFLET MAP, LAYERS, SAFE LIT LOOP GENERATOR & OSRM ROUTING
+   GOWALK PRO — MAP.JS (TÄIELIK KAARDI, TÄPPIS-GPS JA MARSRUUTIDE MOODUL)
    ========================================================================== */
 
-import { LUCIDE_SVGS } from './config.js';
-import { state, plannedRoute, saveState, getMissingSteps } from './state.js';
+import { state, saveState, getMissingSteps } from './state.js';
 
 export let map = null;
-let tileLayers = {};
-let activeLayer = null;
+
+let currentTileLayer = null;
+let pinAMarker = null;
+let waypointMarkers = [];
 let waypoints = [];
-let markers = [];
-let routeLine = null;
+let routePolyline = null;
+let routeGlowPolyline = null;
+let lastGeneratedSteps = 0;
+let lastLoopAngleRad = null;
+let globalRunPrecisionGps = null;
 
-let lastGeneratedBearing = Math.random() * 2 * Math.PI;
-let routeVariantCounter = 0;
-let lastTargetSteps = 0;
-let floatingShuffleBtn = null;
-let cachedSafeNodes = { key: '', nodes: [] };
-let hudUpdateCallback = null;
-
-export function initMapAndRouting(onHudUpdate) {
-  hudUpdateCallback = onHudUpdate;
-
-  const mapEl = document.getElementById('map');
-  if (!mapEl || !window.L) return;
-
-  map = L.map('map', {
-    zoomControl: false,
-    attributionControl: true
-  }).setView([58.3859, 24.4971], 14);
-
-  tileLayers = {
-    dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      className: 'map-tiles-dark',
-      attribution: '© Google Maps'
-    }),
-    light: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    }),
-    hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    }),
-    terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
-      maxZoom: 20,
-      attribution: '© Google Maps'
-    })
-  };
-
-  activeLayer = tileLayers[state.settings.mapLayer] || tileLayers.dark;
-  activeLayer.addTo(map);
-
-  routeLine = L.polyline([], {
-    color: '#8b5cf6',
-    weight: 5,
-    opacity: 0.92
-  }).addTo(map);
-
-  document.querySelectorAll('.layer-chip').forEach(chip => {
-    chip.addEventListener('click', () => switchMapLayer(chip.dataset.layer));
-  });
-
-  map.on('click', e => {
-    waypoints.push(e.latlng);
-    rebuildWaypoints();
-  });
-
-  const undoBtn = document.getElementById('undoWaypointBtn');
-  if (undoBtn) {
-    undoBtn.addEventListener('click', () => {
-      if (waypoints.length > 0) {
-        waypoints.pop();
-        rebuildWaypoints();
-        if (waypoints.length <= 1) {
-          plannedRoute.steps = 0;
-          plannedRoute.distanceKm = 0;
-          setFloatingShuffleVisible(false);
-          if (hudUpdateCallback) hudUpdateCallback();
-        }
+// Kui kasutaja on juba varem asukoha lukustanud, avame kaardi kohe seal (mitte Pärnus)
+function getInitialStartCoords() {
+  try {
+    const raw = localStorage.getItem('gowalk_last_precise_gps');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        typeof parsed.lat === 'number' &&
+        typeof parsed.lng === 'number' &&
+        !Number.isNaN(parsed.lat) &&
+        !Number.isNaN(parsed.lng)
+      ) {
+        return [parsed.lat, parsed.lng];
       }
-    });
-  }
-
-  const clearBtn = document.getElementById('clearRouteBtn');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      waypoints = [];
-      routeLine.setLatLngs([]);
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
-      plannedRoute.steps = 0;
-      plannedRoute.distanceKm = 0;
-      setFloatingShuffleVisible(false);
-      if (hudUpdateCallback) hudUpdateCallback();
-    });
-  }
-
-  const locateBtn = document.getElementById('locateMeBtn');
-  if (locateBtn) {
-    locateBtn.addEventListener('click', () => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(pos => {
-        const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-        map.setView(latlng, 15);
-        if (waypoints.length === 0) {
-          waypoints.push(latlng);
-          rebuildWaypoints();
-        } else {
-          waypoints[0] = latlng;
-          rebuildWaypoints();
-        }
-      });
-    });
-  }
-
-  setupRouteGeneratorUI();
-  switchMapLayer(state.settings.mapLayer || 'dark');
+    }
+  } catch (e) {}
+  return [58.3859, 24.4971]; // Vaikimisi varuasukoht ainult siis, kui GPS pole veel vastanud
 }
 
-export function switchMapLayer(layerKey) {
-  if (!map || !tileLayers[layerKey]) return;
-  if (activeLayer) map.removeLayer(activeLayer);
-  activeLayer = tileLayers[layerKey];
-  activeLayer.addTo(map);
-  state.settings.mapLayer = layerKey;
-  saveState();
+let startCoords = getInitialStartCoords();
 
-  document.querySelectorAll('.layer-chip').forEach(chip => {
-    chip.classList.toggle('active', chip.dataset.layer === layerKey);
-  });
-  const styleSelect = document.getElementById('settingMapStyle');
-  if (styleSelect) styleSelect.value = layerKey;
+const TILE_LAYERS = {
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    options: { maxZoom: 20, subdomains: 'abcd' }
+  },
+  light: {
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    options: { maxZoom: 20, subdomains: 'abcd' }
+  },
+  hybrid: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    options: { maxZoom: 19 }
+  },
+  terrain: {
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    options: { maxZoom: 17 }
+  }
+};
+
+function injectRouteBarAndPinStyles() {
+  if (document.getElementById('gw-map-route-bar-fixes')) return;
+  const st = document.createElement('style');
+  st.id = 'gw-map-route-bar-fixes';
+  st.textContent = [
+    /* Pin A ja teekonnapunktide ikoonid */
+    '.gw-pin-a-marker {',
+    '  width: 34px; height: 34px; border-radius: 50%;',
+    '  background: linear-gradient(135deg, #7c3aed, #ec4899);',
+    '  border: 3px solid #ffffff;',
+    '  color: #ffffff; font-weight: 800; font-size: 0.92rem;',
+    '  display: flex; align-items: center; justify-content: center;',
+    '  box-shadow: 0 4px 16px rgba(236, 72, 153, 0.75);',
+    '}',
+    '.gw-wp-marker {',
+    '  width: 28px; height: 28px; border-radius: 50%;',
+    '  background: rgba(124, 58, 237, 0.95);',
+    '  border: 2px solid #ffffff;',
+    '  color: #ffffff; font-weight: 800; font-size: 0.78rem;',
+    '  display: flex; align-items: center; justify-content: center;',
+    '  box-shadow: 0 3px 12px rgba(124, 58, 237, 0.65);',
+    '}',
+    /* "Rada: ... | Teine suund" kasti puhas paigutus HUD kaardi kohal */
+    '#routeInfoBar, #routeInfoPill, .route-info-bar, .route-info-pill, .route-summary-pill, .gw-route-bar-fixed {',
+    '  position: fixed !important;',
+    '  left: 50% !important;',
+    '  transform: translateX(-50%) !important;',
+    '  bottom: 268px !important;',
+    '  width: calc(100% - 24px) !important;',
+    '  max-width: 396px !important;',
+    '  background: linear-gradient(160deg, rgba(26, 31, 66, 0.96) 0%, rgba(14, 18, 38, 0.98) 100%) !important;',
+    '  border: 1px solid rgba(236, 72, 153, 0.55) !important;',
+    '  border-radius: 999px !important;',
+    '  padding: 6px 10px !important;',
+    '  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 18px rgba(168, 85, 247, 0.3) !important;',
+    '  display: flex !important;',
+    '  align-items: center !important;',
+    '  justify-content: space-between !important;',
+    '  gap: 8px !important;',
+    '  z-index: 2500 !important;',
+    '  box-sizing: border-box !important;',
+    '}',
+    '#routeInfoBar.hidden, #routeInfoPill.hidden, .route-info-bar.hidden, .gw-route-bar-fixed.hidden {',
+    '  display: none !important;',
+    '}',
+    '#routeInfoText, .route-info-text, .gw-route-bar-text {',
+    '  font-size: 0.8rem !important;',
+    '  font-weight: 700 !important;',
+    '  color: #f8fafc !important;',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
+    '  flex: 1 1 auto !important;',
+    '  text-align: left !important;',
+    '  padding-left: 4px !important;',
+    '}',
+    '#altRouteBtn, #changeDirectionBtn, .alt-route-btn, .gw-alt-route-btn {',
+    '  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%) !important;',
+    '  border: 1px solid rgba(244, 114, 182, 0.65) !important;',
+    '  color: #ffffff !important;',
+    '  border-radius: 999px !important;',
+    '  padding: 6px 12px !important;',
+    '  font: 700 0.76rem inherit !important;',
+    '  white-space: nowrap !important;',
+    '  flex-shrink: 0 !important;',
+    '  cursor: pointer !important;',
+    '  box-shadow: 0 3px 12px rgba(236, 72, 153, 0.35) !important;',
+    '}'
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
+export function alignRouteInfoBarAboveHud() {
+  const hudCard = document.querySelector('.hud-card, .bottom-hud, #bottomHud');
+  let routeBar =
+    document.getElementById('routeInfoBar') ||
+    document.getElementById('routeInfoPill') ||
+    document.querySelector('.route-info-bar, .route-info-pill, .route-summary-pill, .gw-route-bar-fixed');
+
+  if (!routeBar) {
+    const allEls = document.querySelectorAll('button, span, div');
+    for (let i = 0; i < allEls.length; i++) {
+      const txt = (allEls[i].textContent || '').trim();
+      if (txt === 'Teine suund' && allEls[i].parentElement) {
+        routeBar = allEls[i].parentElement;
+        allEls[i].classList.add('gw-alt-route-btn');
+        break;
+      }
+    }
+  }
+
+  if (routeBar && hudCard) {
+    routeBar.classList.add('gw-route-bar-fixed');
+    const hudRect = hudCard.getBoundingClientRect();
+    if (hudRect.height > 40) {
+      const bottomPx = Math.max(245, Math.round(window.innerHeight - hudRect.top + 10));
+      routeBar.style.setProperty('bottom', bottomPx + 'px', 'important');
+    }
+  }
 }
 
 export function invalidateMapSize() {
   if (map) {
-    setTimeout(() => map.invalidateSize(), 200);
+    setTimeout(function () {
+      map.invalidateSize();
+      alignRouteInfoBarAboveHud();
+    }, 120);
   }
 }
 
-function updateFloatingShuffleLabel() {
-  if (!floatingShuffleBtn) return;
-  const isSafe = state.settings.safeLitOnly !== false;
-  const modeSvg = isSafe ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
-  const routeText =
-    plannedRoute.steps > 0
-      ? `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`
-      : 'Valitud rada';
+export function switchMapLayer(layerKey) {
+  if (!map || !window.L) return;
+  const key = TILE_LAYERS[layerKey] ? layerKey : 'dark';
+  const cfg = TILE_LAYERS[key];
 
-  floatingShuffleBtn.innerHTML = `
-    <span class="shuffle-mode-icon">${modeSvg}</span>
-    <span>${routeText}</span>
-    <span class="shuffle-action-tag">
-      ${LUCIDE_SVGS.refreshCw}
-      <span>Teine suund</span>
-    </span>
-  `;
-}
+  if (currentTileLayer) {
+    map.removeLayer(currentTileLayer);
+  }
+  currentTileLayer = L.tileLayer(cfg.url, cfg.options).addTo(map);
 
-function setFloatingShuffleVisible(visible) {
-  if (floatingShuffleBtn) {
-    updateFloatingShuffleLabel();
-    floatingShuffleBtn.classList.toggle('visible', visible);
+  if (state && state.settings) {
+    state.settings.mapLayer = key;
+    saveState();
+  }
+
+  const pills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer]');
+  for (let i = 0; i < pills.length; i++) {
+    const pKey = pills[i].getAttribute('data-layer') || pills[i].getAttribute('data-style');
+    if (pKey) {
+      pills[i].classList.toggle('active', pKey === key);
+    }
+  }
+
+  const selectEl = document.getElementById('settingMapStyle');
+  if (selectEl && selectEl.value !== key) {
+    selectEl.value = key;
   }
 }
 
-function createPinIcon(label, isStart = false) {
-  const bg = isStart ? '#8b5cf6' : '#c084fc';
+function createPinAIcon() {
   return L.divIcon({
-    className: 'custom-map-pin',
-    html: `<div style="
-      width:28px;height:28px;border-radius:50%;
-      background:${bg};color:#ffffff;font-family:'Plus Jakarta Sans',sans-serif;
-      font-weight:800;font-size:12px;display:flex;align-items:center;
-      justify-content:center;border:2px solid #fff;box-shadow:0 4px 14px rgba(139,92,246,0.65);
-    ">${label}</div>`,
+    className: '',
+    html: '<div class="gw-pin-a-marker">A</div>',
+    iconSize: [34, 34],
+    iconAnchor: [17, 17]
+  });
+}
+
+function createWaypointIcon(num) {
+  return L.divIcon({
+    className: '',
+    html: '<div class="gw-wp-marker">' + num + '</div>',
     iconSize: [28, 28],
     iconAnchor: [14, 14]
   });
 }
 
-function setPlannedRouteMetrics(totalMeters) {
-  const routeKm = totalMeters / 1000;
-  const strideMeters = (state.settings.strideCm || 76) / 100;
-  const routeSteps = Math.round(totalMeters / strideMeters);
+function getOrCreateRouteInfoBar() {
+  let bar =
+    document.getElementById('routeInfoBar') ||
+    document.getElementById('routeInfoPill') ||
+    document.querySelector('.route-info-bar, .route-info-pill, .route-summary-pill');
 
-  plannedRoute.steps = routeSteps;
-  plannedRoute.distanceKm = +routeKm.toFixed(2);
-  updateFloatingShuffleLabel();
-  if (hudUpdateCallback) hudUpdateCallback();
-}
-
-function recalculateRouteMetrics() {
-  if (!map || !routeLine) return;
-  let totalMeters = 0;
-  const latlngs = routeLine.getLatLngs();
-  for (let i = 1; i < latlngs.length; i++) {
-    totalMeters += map.distance(latlngs[i - 1], latlngs[i]);
-  }
-  if (latlngs.length > 1) {
-    setPlannedRouteMetrics(totalMeters);
-    setFloatingShuffleVisible(true);
-  }
-}
-
-function rebuildWaypoints(customGeometry = null, skipMetricRecalc = false) {
-  if (!map || !routeLine) return;
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-  routeLine.setLatLngs(customGeometry || waypoints);
-
-  waypoints.forEach((latlng, idx) => {
-    const label = idx === 0 ? 'A' : idx;
-    const marker = L.marker(latlng, {
-      draggable: true,
-      icon: createPinIcon(label, idx === 0)
-    }).addTo(map);
-
-    marker.on('drag', e => {
-      waypoints[idx] = e.target.getLatLng();
-      routeLine.setLatLngs(waypoints);
-      recalculateRouteMetrics();
-    });
-
-    markers.push(marker);
-  });
-
-  if (!skipMetricRecalc) {
-    recalculateRouteMetrics();
-  }
-}
-
-function setupRouteGeneratorUI() {
-  const viewport = document.querySelector('.app-viewport');
-  const toolsBar = document.querySelector('.map-floating-tools');
-  if (!viewport || !toolsBar) return;
-
-  const magicFab = document.createElement('button');
-  magicFab.className = 'tool-fab magic-fab';
-  magicFab.title = 'Genereeri puuduvate sammude trajektoor';
-  magicFab.innerHTML = '<i data-lucide="sparkles"></i>';
-  toolsBar.prepend(magicFab);
-
-  floatingShuffleBtn = document.createElement('button');
-  floatingShuffleBtn.id = 'floatingShuffleBtn';
-  floatingShuffleBtn.className = 'floating-shuffle-pill';
-  updateFloatingShuffleLabel();
-  viewport.appendChild(floatingShuffleBtn);
-
-  const isSafeDefault = state.settings.safeLitOnly !== false;
-  const initialMissing = getMissingSteps() || 3000;
-
-  const popover = document.createElement('div');
-  popover.id = 'routeGenPopover';
-  popover.className = 'route-gen-popover';
-  popover.innerHTML = `
-    <div class="route-gen-header">
-      <div class="route-gen-title">
-        <span class="spark-icon-wrap">${LUCIDE_SVGS.sparkles}</span>
-        <span>Automaatne Trajektoori Generaator</span>
-      </div>
-      <button id="closeRouteGenBtn" class="icon-btn" style="width:28px;height:28px;">
-        ${LUCIDE_SVGS.close}
-      </button>
-    </div>
-    <p class="route-gen-sub" id="routeGenMissingHint">
-      Vali sammude arv ja GoWalk joonistab alguspunktist (Pin A) puhta ringtrajektoori:
-    </p>
-
-    <button type="button" id="safeLitRouteToggleBtn" class="safe-route-toggle ${isSafeDefault ? 'active' : ''}">
-      <div class="safe-toggle-left">
-        <span class="safe-toggle-icon-box" id="safeToggleIconBox">
-          ${isSafeDefault ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees}
-        </span>
-        <div class="safe-toggle-text">
-          <span class="safe-toggle-title">Ainult valgustatud tänavad / Ohutu ring</span>
-          <span class="safe-toggle-sub" id="safeToggleSubtext">
-            ${isSafeDefault ? 'Väldib pimedaid metsaradu, eelistab tänavaid' : 'Metsa-, pargi- ja loodusrajad on lubatud'}
-          </span>
-        </div>
-      </div>
-      <span class="safe-toggle-pill" id="safeToggleBadge">${isSafeDefault ? 'SEES' : 'VÄLJAS'}</span>
-    </button>
-
-    <div class="route-preset-pills">
-      <button class="preset-pill active" data-steps="missing">Puuduvad</button>
-      <button class="preset-pill" data-steps="3000">3 000</button>
-      <button class="preset-pill" data-steps="5000">5 000</button>
-      <button class="preset-pill" data-steps="10000">10 000</button>
-    </div>
-    <div class="route-custom-row">
-      <input type="number" id="targetRouteStepsInput" class="route-custom-input" value="${initialMissing}" step="500" min="300" placeholder="Sammude arv..." />
-      <button id="generateSmartRouteBtn" class="btn-generate-go">Genereeri rada</button>
-    </div>
-    <button id="shuffleRoutePopoverBtn" class="btn-shuffle-route">
-      ${LUCIDE_SVGS.refreshCw}
-      <span>Teine suund (Shuffle)</span>
-    </button>
-  `;
-  viewport.appendChild(popover);
-
-  if (window.lucide) window.lucide.createIcons();
-
-  const stepsInput = document.getElementById('targetRouteStepsInput');
-  const missingHint = document.getElementById('routeGenMissingHint');
-
-  const togglePopover = () => {
-    const missing = getMissingSteps();
-    const suggested = missing >= 300 ? missing : 3000;
-    stepsInput.value = suggested;
-    if (missing > 0) {
-      missingHint.textContent = `Sul on eesmärgist puudu ${missing.toLocaleString('et-EE')} sammu. Koosta täpselt puuduv ring:`;
-    } else {
-      missingHint.textContent = 'Päeva eesmärk on täis! Võid genereerida lisaringi:';
-    }
-    popover.classList.toggle('open');
-  };
-
-  magicFab.addEventListener('click', togglePopover);
-  document.getElementById('closeRouteGenBtn').addEventListener('click', () => {
-    popover.classList.remove('open');
-  });
-
-  const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
-  const safeToggleIconBox = document.getElementById('safeToggleIconBox');
-  const safeToggleSubtext = document.getElementById('safeToggleSubtext');
-  const safeToggleBadge = document.getElementById('safeToggleBadge');
-
-  safeToggleBtn.addEventListener('click', () => {
-    state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
-    const active = state.settings.safeLitOnly;
-    safeToggleBtn.classList.toggle('active', active);
-    safeToggleIconBox.innerHTML = active ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
-    safeToggleSubtext.textContent = active
-      ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
-      : 'Metsa-, pargi- ja loodusrajad on lubatud';
-    safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
-    updateFloatingShuffleLabel();
-    saveState();
-  });
-
-  popover.querySelectorAll('.preset-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      popover.querySelectorAll('.preset-pill').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      const rawAttr = pill.getAttribute('data-steps');
-      const missing = getMissingSteps();
-      const val =
-        rawAttr === 'missing'
-          ? missing >= 300
-            ? missing
-            : 3000
-          : parseInt(rawAttr, 10);
-      stepsInput.value = val;
-      lastTargetSteps = val;
-      generateLoopRouteForSteps(val);
-      popover.classList.remove('open');
-    });
-  });
-
-  document.getElementById('generateSmartRouteBtn').addEventListener('click', () => {
-    const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
-    const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || fallback);
-    lastTargetSteps = targetSteps;
-    generateLoopRouteForSteps(targetSteps);
-    popover.classList.remove('open');
-  });
-
-  document.getElementById('shuffleRoutePopoverBtn').addEventListener('click', () => {
-    const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
-    const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || lastTargetSteps || fallback);
-    lastTargetSteps = targetSteps;
-    generateLoopRouteForSteps(targetSteps);
-  });
-
-  floatingShuffleBtn.addEventListener('click', () => {
-    const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
-    const targetSteps = lastTargetSteps || fallback;
-    generateLoopRouteForSteps(targetSteps);
-  });
-}
-
-function offsetCoordinate(originLatLng, distanceMeters, bearingRad) {
-  const R = 6378137;
-  const lat1 = (originLatLng.lat * Math.PI) / 180;
-  const lon1 = (originLatLng.lng * Math.PI) / 180;
-  const dByR = distanceMeters / R;
-
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(dByR) +
-      Math.cos(lat1) * Math.sin(dByR) * Math.cos(bearingRad)
-  );
-  const lon2 =
-    lon1 +
-    Math.atan2(
-      Math.sin(bearingRad) * Math.sin(dByR) * Math.cos(lat1),
-      Math.cos(dByR) - Math.sin(lat1) * Math.sin(lat2)
-    );
-
-  return L.latLng((lat2 * 180) / Math.PI, (lon2 * 180) / Math.PI);
-}
-
-async function fetchSafeLitStreetNodes(startPoint, searchRadiusMeters) {
-  const radius = Math.min(3500, Math.max(600, Math.round(searchRadiusMeters * 2.2)));
-  const cacheKey = `${startPoint.lat.toFixed(3)}_${startPoint.lng.toFixed(3)}_${radius}`;
-  if (cachedSafeNodes.key === cacheKey && cachedSafeNodes.nodes.length > 10) {
-    return cachedSafeNodes.nodes;
-  }
-
-  const query = `
-    [out:json][timeout:3];
-    (
-      way(around:${radius},${startPoint.lat},${startPoint.lng})["lit"="yes"]["highway"!~"motorway|trunk|track|path|bridleway|steps|construction"];
-      way(around:${radius},${startPoint.lat},${startPoint.lng})["highway"~"residential|living_street|pedestrian|tertiary|secondary"]["lit"!="no"];
-    );
-    out geom;
-  `;
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2600);
-    const res = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: 'data=' + encodeURIComponent(query),
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    const data = await res.json();
-
-    const nodes = [];
-    if (data && Array.isArray(data.elements)) {
-      data.elements.forEach(el => {
-        const isLit = el.tags?.lit === 'yes';
-        if (Array.isArray(el.geometry)) {
-          for (let i = 0; i < el.geometry.length; i += 3) {
-            const pt = el.geometry[i];
-            if (pt && pt.lat && pt.lon) {
-              nodes.push({ lat: pt.lat, lng: pt.lon, lit: isLit });
-            }
-          }
-        }
-      });
-    }
-
-    if (nodes.length > 0) {
-      cachedSafeNodes = { key: cacheKey, nodes };
-    }
-    return nodes;
-  } catch (e) {
-    return [];
-  }
-}
-
-function snapPointToSafeStreet(idealLatLng, safeNodes, maxSnapDistMeters) {
-  if (!safeNodes || safeNodes.length === 0 || !map) return idealLatLng;
-  let bestNode = null;
-  let bestScore = Infinity;
-
-  for (let i = 0; i < safeNodes.length; i++) {
-    const n = safeNodes[i];
-    const candidate = L.latLng(n.lat, n.lng);
-    const dist = map.distance(idealLatLng, candidate);
-    if (dist <= maxSnapDistMeters) {
-      const score = n.lit ? dist * 0.72 : dist;
-      if (score < bestScore) {
-        bestScore = score;
-        bestNode = candidate;
+  if (!bar) {
+    const allBtns = document.querySelectorAll('button');
+    for (let i = 0; i < allBtns.length; i++) {
+      if ((allBtns[i].textContent || '').trim().indexOf('Teine suund') !== -1) {
+        bar = allBtns[i].parentElement;
+        break;
       }
     }
   }
-  return bestNode || idealLatLng;
-}
 
-function buildTrueCircularWaypoints(
-  startPoint,
-  loopRadiusMeters,
-  centerBearingRad,
-  turnSign,
-  aspectRatio = 1.0,
-  safeNodes = []
-) {
-  const loopCenter = offsetCoordinate(startPoint, loopRadiusMeters, centerBearingRad);
-  const angleA = centerBearingRad + Math.PI;
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'routeInfoBar';
+    bar.className = 'gw-route-bar-fixed hidden';
+    bar.innerHTML = [
+      '<span id="routeInfoText" class="gw-route-bar-text">Rada: 0 sammu (0.00 km)</span>',
+      '<button type="button" id="altRouteBtn" class="gw-alt-route-btn">Teine suund ↻</button>'
+    ].join('');
+    document.body.appendChild(bar);
 
-  const angle1 = angleA + turnSign * (Math.PI * 0.5);
-  const angle2 = angleA + turnSign * Math.PI;
-  const angle3 = angleA + turnSign * (Math.PI * 1.5);
-
-  let p1 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle1);
-  let p2 = offsetCoordinate(loopCenter, loopRadiusMeters * 1.08, angle2);
-  let p3 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle3);
-
-  if (safeNodes && safeNodes.length > 0) {
-    const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
-    p1 = snapPointToSafeStreet(p1, safeNodes, snapLimit);
-    p2 = snapPointToSafeStreet(p2, safeNodes, snapLimit);
-    p3 = snapPointToSafeStreet(p3, safeNodes, snapLimit);
+    const altBtn = bar.querySelector('#altRouteBtn');
+    if (altBtn) {
+      altBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const stepsToUse = lastGeneratedSteps > 0 ? lastGeneratedSteps : Math.max(1500, getMissingSteps());
+        generateLoopRouteForSteps(stepsToUse);
+      });
+    }
+  } else {
+    bar.classList.add('gw-route-bar-fixed');
+    const existingAltBtn =
+      bar.querySelector('button') ||
+      document.getElementById('altRouteBtn') ||
+      document.getElementById('changeDirectionBtn');
+    if (existingAltBtn && !existingAltBtn.dataset.gwBound) {
+      existingAltBtn.dataset.gwBound = '1';
+      existingAltBtn.classList.add('gw-alt-route-btn');
+      existingAltBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const stepsToUse = lastGeneratedSteps > 0 ? lastGeneratedSteps : Math.max(1500, getMissingSteps());
+        generateLoopRouteForSteps(stepsToUse);
+      });
+    }
   }
 
-  return [startPoint, p1, p2, p3];
+  alignRouteInfoBarAboveHud();
+  return bar;
 }
 
-function removeDeadEndSpurs(latlngs) {
-  if (!Array.isArray(latlngs) || latlngs.length < 8 || !map) return latlngs;
-  let pts = latlngs.slice();
+function updateRouteSummaryBar(distanceMeters) {
+  const bar = getOrCreateRouteInfoBar();
+  if (!bar) return;
 
-  for (let pass = 0; pass < 3; pass++) {
-    let cleaned = [];
-    let i = 0;
-    while (i < pts.length) {
-      let jumpIndex = -1;
-      const maxLookAhead = Math.min(pts.length - 1, i + 45);
-      for (let j = maxLookAhead; j >= i + 3; j--) {
-        if (i < 5 && j > pts.length - 6) continue;
-        const distBetween = map.distance(pts[i], pts[j]);
-        if (distBetween < 18) {
-          jumpIndex = j;
+  if (!distanceMeters || distanceMeters <= 0) {
+    bar.classList.add('hidden');
+    bar.style.setProperty('display', 'none', 'important');
+    return;
+  }
+
+  const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
+  const steps = Math.round(distanceMeters / strideMeters);
+  const km = (distanceMeters / 1000).toFixed(2);
+
+  let textEl =
+    bar.querySelector('#routeInfoText, .route-info-text, .gw-route-bar-text') ||
+    bar.querySelector('span');
+
+  if (textEl) {
+    textEl.classList.add('gw-route-bar-text');
+    textEl.textContent = 'Rada: ' + steps.toLocaleString('et-EE') + ' sammu (' + km + ' km)';
+  }
+
+  bar.classList.remove('hidden');
+  bar.style.setProperty('display', 'flex', 'important');
+  alignRouteInfoBarAboveHud();
+}
+
+function drawRouteLines(coordsLatLng, distanceMeters) {
+  if (!map || !window.L) return;
+
+  if (routeGlowPolyline) {
+    map.removeLayer(routeGlowPolyline);
+    routeGlowPolyline = null;
+  }
+  if (routePolyline) {
+    map.removeLayer(routePolyline);
+    routePolyline = null;
+  }
+
+  if (!coordsLatLng || coordsLatLng.length < 2) {
+    updateRouteSummaryBar(0);
+    return;
+  }
+
+  routeGlowPolyline = L.polyline(coordsLatLng, {
+    color: '#ec4899',
+    weight: 12,
+    opacity: 0.28,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+
+  routePolyline = L.polyline(coordsLatLng, {
+    color: '#a855f7',
+    weight: 5,
+    opacity: 0.95,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+
+  updateRouteSummaryBar(distanceMeters);
+}
+
+function rebuildWaypointMarkers() {
+  if (!map || !window.L) return;
+  for (let i = 0; i < waypointMarkers.length; i++) {
+    map.removeLayer(waypointMarkers[i]);
+  }
+  waypointMarkers = [];
+
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    const m = L.marker(wp, { icon: createWaypointIcon(i + 1) }).addTo(map);
+    waypointMarkers.push(m);
+  }
+}
+
+async function fetchAndDrawOsrmRoute(pointsArray, fitMapBounds) {
+  if (!pointsArray || pointsArray.length < 2) {
+    drawRouteLines([], 0);
+    return;
+  }
+
+  const coordString = pointsArray
+    .map(function (pt) {
+      return pt[1].toFixed(6) + ',' + pt[0].toFixed(6);
+    })
+    .join(';');
+
+  const url =
+    'https://router.project-osrm.org/route/v1/foot/' +
+    coordString +
+    '?overview=full&geometries=geojson';
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data && data.routes && data.routes[0]) {
+      const route = data.routes[0];
+      const latLngs = route.geometry.coordinates.map(function (c) {
+        return [c[1], c[0]];
+      });
+      drawRouteLines(latLngs, route.distance);
+      if (fitMapBounds && routePolyline) {
+        map.fitBounds(routePolyline.getBounds(), { padding: [54, 54], maxZoom: 17 });
+      }
+      return;
+    }
+  } catch (e) {}
+
+  // Varuvariant: kui OSRM ei vasta, joonistame sirge ühenduse
+  let fallbackDist = 0;
+  for (let i = 1; i < pointsArray.length; i++) {
+    fallbackDist += map.distance(pointsArray[i - 1], pointsArray[i]);
+  }
+  drawRouteLines(pointsArray, fallbackDist * 1.25);
+}
+
+export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, numStopsOverride) {
+  if (!map || !window.L) return;
+
+  const steps = Math.max(300, parseInt(targetSteps, 10) || 3000);
+  lastGeneratedSteps = steps;
+
+  const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
+  const targetDistanceMeters = steps * strideMeters;
+
+  // Tänavavõrgu tegur (teed on ~1.38x pikemad kui linnulennult ring)
+  const effectiveCircumference = targetDistanceMeters / 1.38;
+  const radiusMeters = Math.max(80, effectiveCircumference / (2 * Math.PI));
+
+  // Kui kasutaja vajutab "Teine suund", keerame ringi suunda 95 kraadi võrra
+  if (lastLoopAngleRad === null) {
+    lastLoopAngleRad = Math.random() * 2 * Math.PI;
+  } else {
+    lastLoopAngleRad = (lastLoopAngleRad + (95 * Math.PI) / 180) % (2 * Math.PI);
+  }
+
+  const baseAngle = lastLoopAngleRad;
+  const stopsCount = Math.max(2, Math.min(6, parseInt(numStopsOverride, 10) || 3));
+
+  const lat0 = startCoords[0];
+  const lng0 = startCoords[1];
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+
+  // Ringi keskpunkt on startCoords-ist radiusMeters kaugusel suunas baseAngle
+  const centerLat = lat0 + (radiusMeters * Math.cos(baseAngle)) / metersPerDegLat;
+  const centerLng = lng0 + (radiusMeters * Math.sin(baseAngle)) / metersPerDegLng;
+
+  const startAngleFromCenter = baseAngle + Math.PI;
+  const generatedWaypoints = [];
+
+  for (let i = 1; i <= stopsCount; i++) {
+    const frac = i / (stopsCount + 1);
+    const theta = startAngleFromCenter + frac * 2 * Math.PI;
+    const wpLat = centerLat + (radiusMeters * Math.cos(theta)) / metersPerDegLat;
+    const wpLng = centerLng + (radiusMeters * Math.sin(theta)) / metersPerDegLng;
+    generatedWaypoints.push([wpLat, wpLng]);
+  }
+
+  waypoints = generatedWaypoints;
+  rebuildWaypointMarkers();
+
+  const fullLoopPoints = [startCoords].concat(waypoints).concat([startCoords]);
+  await fetchAndDrawOsrmRoute(fullLoopPoints, true);
+}
+
+export function clearCurrentRoute() {
+  waypoints = [];
+  lastGeneratedSteps = 0;
+  rebuildWaypointMarkers();
+  drawRouteLines([], 0);
+}
+
+export function undoLastWaypoint() {
+  if (waypoints.length === 0) return;
+  waypoints.pop();
+  rebuildWaypointMarkers();
+  if (waypoints.length === 0) {
+    drawRouteLines([], 0);
+  } else {
+    const pts = [startCoords].concat(waypoints);
+    fetchAndDrawOsrmRoute(pts, false);
+  }
+}
+
+export function initMapAndRouting(updateHudFn) {
+  injectRouteBarAndPinStyles();
+
+  const mapContainer = document.getElementById('map');
+  if (!mapContainer || !window.L) return;
+
+  if (!map) {
+    map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView(startCoords, 15);
+  }
+
+  const initialLayer = (state.settings && state.settings.mapLayer) || 'dark';
+  switchMapLayer(initialLayer);
+
+  pinAMarker = L.marker(startCoords, {
+    draggable: true,
+    icon: createPinAIcon()
+  }).addTo(map);
+
+  pinAMarker.on('dragend', function () {
+    const pos = pinAMarker.getLatLng();
+    startCoords = [pos.lat, pos.lng];
+    if (waypoints.length > 0) {
+      const pts = [startCoords].concat(waypoints).concat([startCoords]);
+      fetchAndDrawOsrmRoute(pts, false);
+    }
+  });
+
+  // Kaardil klõpsates saab kasutaja lisada oma vahepunkte
+  map.on('click', function (e) {
+    waypoints.push([e.latlng.lat, e.latlng.lng]);
+    rebuildWaypointMarkers();
+    const pts = [startCoords].concat(waypoints);
+    fetchAndDrawOsrmRoute(pts, false);
+  });
+
+  // Ülemised kaardistiili nupud (Tume, Hele, Hübriid, Maastik)
+  const layerPills = document.querySelectorAll('.map-style-pill, .layer-btn, [data-layer]');
+  for (let i = 0; i < layerPills.length; i++) {
+    layerPills[i].addEventListener('click', function () {
+      const lKey = this.getAttribute('data-layer') || this.getAttribute('data-style') || 'dark';
+      switchMapLayer(lKey);
+    });
+  }
+
+  // Tagasivõtmise (Undo) ja Kustutamise (Trash) nupud paremal servas
+  const undoBtn =
+    document.getElementById('undoWaypointBtn') ||
+    document.getElementById('undoRouteBtn') ||
+    document.getElementById('undoBtn');
+  if (undoBtn) {
+    undoBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      undoLastWaypoint();
+    });
+  }
+
+  const clearBtn =
+    document.getElementById('clearRouteBtn') ||
+    document.getElementById('deleteRouteBtn') ||
+    document.getElementById('clearBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      clearCurrentRoute();
+    });
+  }
+
+  getOrCreateRouteInfoBar();
+
+  // Küsi kohe kaardi valmimisel kasutaja päris asukohta (viib Soome!)
+  if (typeof globalRunPrecisionGps === 'function') {
+    setTimeout(function () {
+      globalRunPrecisionGps(null, null);
+    }, 250);
+  }
+}
+
+/* ==========================================================================
+   TÄPPIS-GPS MOOTOR & AUTOMAATNE ASUKOHA TUVASTUS AVAMISEL
+   ========================================================================== */
+
+export function setupPrecisionGpsLocator() {
+  injectRouteBarAndPinStyles();
+
+  window.addEventListener('resize', alignRouteInfoBarAboveHud);
+  document.addEventListener('click', function () {
+    setTimeout(alignRouteInfoBarAboveHud, 80);
+    setTimeout(alignRouteInfoBarAboveHud, 450);
+  });
+
+  if (!navigator.geolocation) return;
+
+  const origGetCurrentPosition = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+  const origWatchPosition = navigator.geolocation.watchPosition.bind(navigator.geolocation);
+  const origClearWatch = navigator.geolocation.clearWatch.bind(navigator.geolocation);
+
+  let activeRefineWatchId = null;
+  let activeRefineTimer = null;
+  let toastHideTimer = null;
+  let hasMovedToRealLocationThisSession = false;
+
+  function getGpsToast() {
+    let t = document.getElementById('gwGpsStatusToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'gwGpsStatusToast';
+      t.className = 'gw-gps-toast';
+      t.innerHTML =
+        '<span class="gw-gps-dot"></span><span id="gwGpsToastText">Otsin sinu asukohta...</span>';
+      document.body.appendChild(t);
+    }
+    return t;
+  }
+
+  function showGpsToast(msg, isLocked) {
+    const t = getGpsToast();
+    const txt = document.getElementById('gwGpsToastText');
+    if (txt) txt.textContent = msg;
+    t.classList.toggle('locked', Boolean(isLocked));
+    t.classList.add('visible');
+    if (toastHideTimer) clearTimeout(toastHideTimer);
+    if (isLocked) {
+      toastHideTimer = setTimeout(function () {
+        t.classList.remove('visible');
+      }, 2800);
+    }
+  }
+
+  function findLocateButton() {
+    const byId =
+      document.getElementById('locateBtn') ||
+      document.getElementById('locateMeBtn') ||
+      document.getElementById('gpsBtn') ||
+      document.getElementById('centerMapBtn');
+    if (byId) return byId;
+
+    const iconEl = document.querySelector(
+      '[data-lucide="crosshair"], [data-lucide="locate"], [data-lucide="locate-fixed"], svg.lucide-crosshair, svg.lucide-locate, svg.lucide-locate-fixed'
+    );
+    if (iconEl) return iconEl.closest('button');
+    return null;
+  }
+
+  function setGpsButtonAnimating(active) {
+    const btn = findLocateButton();
+    if (!btn) return;
+    btn.classList.toggle('gw-gps-searching', Boolean(active));
+  }
+
+  function movePinAMarkerOnMap(lat, lng) {
+    startCoords = [lat, lng];
+    if (pinAMarker && typeof pinAMarker.setLatLng === 'function') {
+      pinAMarker.setLatLng([lat, lng]);
+    }
+    if (!window.L || !map || !map._layers) return;
+    const latlng = L.latLng(lat, lng);
+    const layerIds = Object.keys(map._layers);
+
+    for (let i = 0; i < layerIds.length; i++) {
+      const lyr = map._layers[layerIds[i]];
+      if (lyr && typeof lyr.setLatLng === 'function' && lyr.options && lyr.options.icon) {
+        const htmlStr = String((lyr.options.icon.options && lyr.options.icon.options.html) || '');
+        const isDraggable = Boolean(
+          lyr.options.draggable || (lyr.dragging && lyr.dragging._enabled)
+        );
+        if (isDraggable || htmlStr.indexOf('>A<') !== -1 || htmlStr.indexOf('pin-a') !== -1) {
+          lyr.setLatLng(latlng);
           break;
         }
       }
-      cleaned.push(pts[i]);
-      if (jumpIndex !== -1) {
-        i = jumpIndex + 1;
-      } else {
-        i += 1;
-      }
     }
-    pts = cleaned;
   }
-  return pts;
-}
 
-async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
-  const coordsQuery = [...pointsList, pointsList[0]]
-    .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
-    .join(';');
+  function stopActiveRefinement() {
+    if (activeRefineWatchId !== null) {
+      origClearWatch(activeRefineWatchId);
+      activeRefineWatchId = null;
+    }
+    if (activeRefineTimer) {
+      clearTimeout(activeRefineTimer);
+      activeRefineTimer = null;
+    }
+    setGpsButtonAnimating(false);
+  }
 
-  const endpoints = safeLitOnly
-    ? [
-        `https://routing.openstreetmap.de/routed-bike/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
-        `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
-        `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
-      ]
-    : [
-        `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordsQuery}?overview=full&geometries=geojson&continue_straight=true`,
-        `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
-      ];
+  function applyPositionToMapAndPin(pos, callbackFn) {
+    hasMovedToRealLocationThisSession = true;
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
 
-  for (const url of endpoints) {
+    movePinAMarkerOnMap(lat, lng);
+    if (map) {
+      map.setView([lat, lng], Math.max(map.getZoom() || 15, 16), { animate: true });
+    }
+    if (typeof callbackFn === 'function') {
+      callbackFn(pos);
+    }
     try {
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data && data.routes && data.routes[0]) {
-        return data.routes[0];
-      }
+      localStorage.setItem(
+        'gowalk_last_precise_gps',
+        JSON.stringify({ lat: lat, lng: lng, acc: pos.coords.accuracy, ts: Date.now() })
+      );
     } catch (e) {}
   }
-  return null;
+
+  function runHighPrecisionLocationLock(successCallback, errorCallback) {
+    stopActiveRefinement();
+    setGpsButtonAnimating(true);
+    showGpsToast('Otsin sinu täpset asukohta...', false);
+
+    let bestPos = null;
+    let bestAccuracy = Infinity;
+
+    activeRefineWatchId = origWatchPosition(
+      function (pos) {
+        const acc = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
+
+        // Viime kaardi kohe esimese GPS-signaaliga kasutaja tegelikku asukohta (nt Soome)
+        // ja täpsustame edasi, kui tuleb veel täpsem signaal
+        if (!hasMovedToRealLocationThisSession || !bestPos || acc < bestAccuracy) {
+          bestAccuracy = Math.min(bestAccuracy, acc);
+          bestPos = pos;
+          applyPositionToMapAndPin(pos, successCallback);
+
+          if (acc <= 20) {
+            stopActiveRefinement();
+            showGpsToast('Täpne asukoht lukustatud (±' + Math.round(acc) + ' m) ✓', true);
+          } else {
+            showGpsToast('Täpsustan GPS-signaali (±' + Math.round(acc) + ' m)...', false);
+          }
+        }
+      },
+      function (err) {
+        if (!bestPos && typeof errorCallback === 'function') {
+          errorCallback(err);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      }
+    );
+
+    activeRefineTimer = setTimeout(function () {
+      if (bestPos) {
+        applyPositionToMapAndPin(bestPos, successCallback);
+        showGpsToast('Asukoht leitud (±' + Math.round(bestAccuracy) + ' m) ✓', true);
+      } else {
+        origGetCurrentPosition(
+          function (fallbackPos) {
+            applyPositionToMapAndPin(fallbackPos, successCallback);
+            showGpsToast('Asukoht leitud ✓', true);
+          },
+          function (err) {
+            showGpsToast('Kontrolli, et asukoht on brauseris lubatud', true);
+            if (typeof errorCallback === 'function') errorCallback(err);
+          },
+          { enableHighAccuracy: false, maximumAge: 60000, timeout: 6000 }
+        );
+      }
+      stopActiveRefinement();
+    }, 6000);
+  }
+
+  globalRunPrecisionGps = runHighPrecisionLocationLock;
+
+  navigator.geolocation.getCurrentPosition = function (success, error) {
+    runHighPrecisionLocationLock(success, error);
+  };
+
+  document.addEventListener(
+    'click',
+    function (e) {
+      const locateBtn = findLocateButton();
+      if (locateBtn && locateBtn.contains(e.target)) {
+        e.preventDefault();
+        runHighPrecisionLocationLock(null, null);
+      }
+    },
+    true
+  );
 }
 
-export async function generateLoopRouteForSteps(targetSteps) {
-  if (!map) return;
-  const strideMeters = (state.settings.strideCm || 76) / 100;
-  const targetMeters = targetSteps * strideMeters;
-  const safeLitOnly = state.settings.safeLitOnly !== false;
-  lastTargetSteps = targetSteps;
+/* ==========================================================================
+   "LOO JALUTUSRING" TÄISVAATE MOODUL
+   ========================================================================== */
 
-  const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
+export function setupRouteBuilderModal(appState, getMissingStepsFn, goHomeFn) {
+  if (document.getElementById('gwRouteBuilderModal')) return;
 
-  const angleShift = Math.PI * 0.53 + Math.random() * (Math.PI * 0.38);
-  lastGeneratedBearing = (lastGeneratedBearing + angleShift) % (2 * Math.PI);
+  const rb = document.createElement('div');
+  rb.id = 'gwRouteBuilderModal';
+  rb.className = 'gw-rb-modal';
+  rb.innerHTML = [
+    '<div class="gw-rb-head">',
+      '<button type="button" class="gw-rb-back" id="gwRbCloseBtn"><i data-lucide="arrow-left"></i></button>',
+      '<span class="gw-rb-title">Loo jalutusring</span>',
+    '</div>',
+    '<div class="gw-rb-tabs">',
+      '<button type="button" class="gw-rb-tab active" data-mode="steps"><i data-lucide="footprints"></i> Sammud</button>',
+      '<button type="button" class="gw-rb-tab" data-mode="time"><i data-lucide="clock"></i> Aeg</button>',
+      '<button type="button" class="gw-rb-tab" data-mode="dist"><i data-lucide="route"></i> Vahemaa</button>',
+    '</div>',
+    '<div class="gw-rb-valbox">',
+      '<span class="gw-rb-bigval" id="gwRbValText">5000</span>',
+      '<span class="gw-rb-unit" id="gwRbUnitText">sammu</span>',
+    '</div>',
+    '<input type="range" id="gwRbSlider" class="gw-rb-slider" min="1000" max="20000" step="500" value="5000" />',
+    '<div class="gw-rb-marks"><span>1K</span><span>3K</span><span>5K</span><span>10K</span><span>15K</span><span>20K</span></div>',
+    '<div class="gw-rb-sub">Marsruudi tüüp</div>',
+    '<div class="gw-rb-types">',
+      '<div class="gw-rb-type active" data-rtype="loop">',
+        '<div class="gw-rb-tico"><i data-lucide="refresh-cw"></i></div>',
+        '<div style="flex:1;"><div class="gw-rb-tname">Puhas ring</div><div class="gw-rb-tdesc">Algus ja lõpp samas kohas</div></div>',
+        '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+      '</div>',
+      '<div class="gw-rb-type" data-rtype="discover">',
+        '<div class="gw-rb-tico"><i data-lucide="star"></i></div>',
+        '<div style="flex:1;"><div class="gw-rb-tname">Avasta</div><div class="gw-rb-tdesc">Uus ja huvitav marsruut</div></div>',
+        '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+      '</div>',
+      '<div class="gw-rb-type" data-rtype="park">',
+        '<div class="gw-rb-tico"><i data-lucide="trees"></i></div>',
+        '<div style="flex:1;"><div class="gw-rb-tname">Park ja loodus</div><div class="gw-rb-tdesc">Eelista rohealasid</div></div>',
+        '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+      '</div>',
+      '<div class="gw-rb-type" data-rtype="surprise">',
+        '<div class="gw-rb-tico"><i data-lucide="sparkles"></i></div>',
+        '<div style="flex:1;"><div class="gw-rb-tname">Üllata mind</div><div class="gw-rb-tdesc">GoWalk valib sinu eest</div></div>',
+        '<i data-lucide="chevron-right" style="color:#94a3b8;width:18px;height:18px;"></i>',
+      '</div>',
+    '</div>',
+    '<div class="gw-rb-stops">',
+      '<span>Peatuste arv (valikuline)</span>',
+      '<div class="gw-rb-stepper">',
+        '<button type="button" class="gw-rb-sbtn" id="gwStopMinus">-</button>',
+        '<strong id="gwStopCount" style="color:#fff;min-width:16px;text-align:center;">3</strong>',
+        '<button type="button" class="gw-rb-sbtn" id="gwStopPlus">+</button>',
+      '</div>',
+    '</div>',
+    '<button type="button" class="gw-rb-cta" id="gwRbCreateBtn"><i data-lucide="sparkles"></i> Loo marsruut</button>'
+  ].join('');
+  document.body.appendChild(rb);
 
-  routeVariantCounter += 1;
-  const turnSign = routeVariantCounter % 2 === 0 ? 1 : -1;
-  const aspectRatios = [0.95, 0.82, 1.12];
-  const aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
+  let rbMode = 'steps';
+  let rbSteps = 5000;
+  let rbStops = 3;
+  let rbType = 'loop';
 
-  let loopRadiusMeters = Math.max(100, targetMeters / 8.0);
+  const sliderEl = document.getElementById('gwRbSlider');
+  const valEl = document.getElementById('gwRbValText');
+  const unitEl = document.getElementById('gwRbUnitText');
 
-  if (floatingShuffleBtn) {
-    floatingShuffleBtn.classList.add('visible');
-    floatingShuffleBtn.innerHTML = `${LUCIDE_SVGS.loader}<span>Otsin ohutut ringrada...</span>`;
+  function updateRbDisplay() {
+    const strideM = ((appState.settings && appState.settings.strideCm) || 76) / 100;
+    if (rbMode === 'steps') {
+      valEl.textContent = rbSteps.toLocaleString('et-EE');
+      unitEl.textContent = 'sammu';
+    } else if (rbMode === 'time') {
+      valEl.textContent = String(Math.max(5, Math.round(rbSteps / 105)));
+      unitEl.textContent = 'min';
+    } else {
+      valEl.textContent = ((rbSteps * strideM) / 1000).toFixed(1);
+      unitEl.textContent = 'km';
+    }
   }
 
-  const safeNodes = safeLitOnly
-    ? await fetchSafeLitStreetNodes(startPoint, loopRadiusMeters)
-    : [];
+  if (sliderEl) {
+    sliderEl.addEventListener('input', function () {
+      rbSteps = parseInt(sliderEl.value, 10) || 5000;
+      updateRbDisplay();
+    });
+  }
 
-  waypoints = buildTrueCircularWaypoints(
-    startPoint,
-    loopRadiusMeters,
-    lastGeneratedBearing,
-    turnSign,
-    aspectRatio,
-    safeNodes
-  );
-
-  try {
-    let route = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
-
-    if (route && route.distance > 80) {
-      const ratio = targetMeters / route.distance;
-      if (ratio < 0.82 || ratio > 1.18) {
-        const clampedRatio = Math.max(0.55, Math.min(1.65, ratio));
-        loopRadiusMeters = loopRadiusMeters * clampedRatio;
-        waypoints = buildTrueCircularWaypoints(
-          startPoint,
-          loopRadiusMeters,
-          lastGeneratedBearing,
-          turnSign,
-          aspectRatio,
-          safeNodes
-        );
-        const refinedRoute = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
-        if (refinedRoute) route = refinedRoute;
-      }
-    }
-
-    if (route) {
-      let latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
-      latlngs = removeDeadEndSpurs(latlngs);
-
-      if (latlngs.length >= 12) {
-        const q1 = latlngs[Math.floor(latlngs.length * 0.25)];
-        const q2 = latlngs[Math.floor(latlngs.length * 0.5)];
-        const q3 = latlngs[Math.floor(latlngs.length * 0.75)];
-        waypoints = [startPoint, q1, q2, q3];
-      }
-
-      rebuildWaypoints(latlngs, true);
-      setPlannedRouteMetrics(targetMeters);
-      map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
-      setFloatingShuffleVisible(true);
+  rb.addEventListener('click', function (e) {
+    if (e.target.closest('#gwRbCloseBtn')) {
+      rb.classList.remove('open');
+      if (typeof goHomeFn === 'function') goHomeFn();
       return;
     }
-  } catch (err) {
-    console.warn('Marsruudi varurežiim:', err);
+    const tab = e.target.closest('.gw-rb-tab');
+    if (tab) {
+      rbMode = tab.getAttribute('data-mode') || 'steps';
+      const allT = rb.querySelectorAll('.gw-rb-tab');
+      for (let i = 0; i < allT.length; i++) allT[i].classList.remove('active');
+      tab.classList.add('active');
+      updateRbDisplay();
+      return;
+    }
+    const tCard = e.target.closest('.gw-rb-type');
+    if (tCard) {
+      rbType = tCard.getAttribute('data-rtype') || 'loop';
+      const allC = rb.querySelectorAll('.gw-rb-type');
+      for (let i = 0; i < allC.length; i++) allC[i].classList.remove('active');
+      tCard.classList.add('active');
+      return;
+    }
+    if (e.target.closest('#gwStopMinus')) {
+      rbStops = Math.max(1, rbStops - 1);
+      document.getElementById('gwStopCount').textContent = String(rbStops);
+      return;
+    }
+    if (e.target.closest('#gwStopPlus')) {
+      rbStops = Math.min(6, rbStops + 1);
+      document.getElementById('gwStopCount').textContent = String(rbStops);
+      return;
+    }
+    if (e.target.closest('#gwRbCreateBtn')) {
+      const currentSliderSteps = parseInt(sliderEl.value, 10) || rbSteps || 5000;
+      rb.classList.remove('open');
+      if (typeof goHomeFn === 'function') goHomeFn();
+      generateLoopRouteForSteps(currentSliderSteps, rbType, rbStops);
+    }
+  });
+}
+
+/* ==========================================================================
+   ABI & KASUTUSJUHEND + TÄPSE GPS-I SEADISTUSJUHEND
+   ========================================================================== */
+
+export function setupHelpAndGpsGuide() {
+  const helpModal = document.getElementById('helpModal');
+  if (!helpModal) return;
+
+  const bodyEl =
+    helpModal.querySelector('.subview-body') ||
+    helpModal.querySelector('.modal-body') ||
+    helpModal;
+
+  if (!bodyEl || document.getElementById('gwHelpGuideWrap')) return;
+
+  bodyEl.innerHTML = [
+    '<div class="gw-help-wrap" id="gwHelpGuideWrap">',
+      '<div class="gw-help-card gps-highlight">',
+        '<div class="gw-help-head">',
+          '<div class="gw-help-ico"><i data-lucide="crosshair"></i></div>',
+          '<div>',
+            '<div class="gw-help-title">Täpne GPS-asukoht (Toas & õues)</div>',
+            '<span class="gw-help-badge">Oluline täpse ringi loomiseks</span>',
+          '</div>',
+        '</div>',
+        '<p class="gw-help-desc">',
+          'Et GoWalk leiaks ka toas diivanil marsruuti koostades sinu täpse asukoha, veendu, et telefonis on sisse lülitatud <strong>Täpne asukoht (Precise Location)</strong>:',
+        '</p>',
+        '<div class="gw-gps-os-tabs">',
+          '<button type="button" class="gw-gps-os-tab active" data-gpsos="android"><i data-lucide="smartphone"></i> Android / Samsung</button>',
+          '<button type="button" class="gw-gps-os-tab" data-gpsos="ios"><i data-lucide="compass"></i> iPhone (Safari)</button>',
+        '</div>',
+        '<div id="gwGpsGuideAndroid" class="gw-gps-steps">',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">1</span>',
+            '<div>Ava telefoni <strong>Seaded (Settings)</strong> → <strong>Asukoht (Location)</strong> ja kontrolli, et asukoht on sees.</div>',
+          '</div>',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">2</span>',
+            '<div>Vajuta <strong>Asukoha täpsuse parandamine (Improve accuracy)</strong> ning lülita sisse <strong>Wi-Fi otsimine</strong> ja <strong>Bluetoothi otsimine</strong>.</div>',
+          '</div>',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">3</span>',
+            '<div><strong>Chrome / Samsung Internet:</strong> vajuta aadressiribal luku ikoonile → <strong>Load (Permissions)</strong> → <strong>Asukoht</strong> ja lülita sisse <strong>Täpne asukoht (Use precise location)</strong>.</div>',
+          '</div>',
+        '</div>',
+        '<div id="gwGpsGuideIos" class="gw-gps-steps" style="display:none;">',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">1</span>',
+            '<div>Ava iPhone\'i <strong>Settings</strong> → <strong>Privacy & Security</strong> → <strong>Location Services</strong>.</div>',
+          '</div>',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">2</span>',
+            '<div>Keri alla ja vali <strong>Safari Websites</strong> (või <strong>Chrome</strong>).</div>',
+          '</div>',
+          '<div class="gw-gps-step">',
+            '<span class="gw-gps-snum">3</span>',
+            '<div>Vali <strong>While Using the App</strong> ja lülita sisse <strong>Precise Location (Täpne asukoht)</strong>.</div>',
+          '</div>',
+        '</div>',
+        '<button type="button" class="gw-gps-test-btn" id="gwTestGpsNowBtn">',
+          '<i data-lucide="locate-fixed"></i>',
+          '<span>Testi ja lukusta täpne GPS kohe</span>',
+        '</button>',
+      '</div>',
+      '<div class="gw-help-card">',
+        '<div class="gw-help-head">',
+          '<div class="gw-help-ico"><i data-lucide="map-pin"></i></div>',
+          '<div class="gw-help-title">Alguspunkti (Pin A) liigutamine</div>',
+        '</div>',
+        '<p class="gw-help-desc">',
+          'Hoia näppu alguspunktil (<strong>A</strong>) ja lohista see kaardil täpselt sinna, kust soovid oma jalutuskäiku alustada, või vajuta paremal servas <strong>GPS-sihiku nupule</strong>.',
+        '</p>',
+      '</div>',
+      '<div class="gw-help-card">',
+        '<div class="gw-help-head">',
+          '<div class="gw-help-ico"><i data-lucide="route"></i></div>',
+          '<div class="gw-help-title">Loo jalutusring & Teine suund</div>',
+        '</div>',
+        '<p class="gw-help-desc">',
+          'Ava alt ribalt <strong>Marsruudid</strong> ja vali soovitud sammude arv. Kui soovid ringi teises ilmakaares, vajuta kaardil nupule <strong>Teine suund</strong>.',
+        '</p>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  if (window.lucide) {
+    window.lucide.createIcons();
   }
 
-  waypoints.push(startPoint);
-  rebuildWaypoints(null, true);
-  setPlannedRouteMetrics(targetMeters);
-  map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
-  setFloatingShuffleVisible(true);
+  bodyEl.addEventListener('click', function (e) {
+    const osTab = e.target.closest('.gw-gps-os-tab');
+    if (osTab) {
+      const targetOs = osTab.getAttribute('data-gpsos');
+      const allTabs = bodyEl.querySelectorAll('.gw-gps-os-tab');
+      for (let i = 0; i < allTabs.length; i++) allTabs[i].classList.remove('active');
+      osTab.classList.add('active');
+
+      const androidPane = document.getElementById('gwGpsGuideAndroid');
+      const iosPane = document.getElementById('gwGpsGuideIos');
+      if (androidPane) androidPane.style.display = targetOs === 'android' ? 'flex' : 'none';
+      if (iosPane) iosPane.style.display = targetOs === 'ios' ? 'flex' : 'none';
+      return;
+    }
+
+    if (e.target.closest('#gwTestGpsNowBtn')) {
+      helpModal.classList.remove('open');
+      if (typeof globalRunPrecisionGps === 'function') {
+        globalRunPrecisionGps(null, null);
+      }
+    }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupHelpAndGpsGuide);
+} else {
+  setupHelpAndGpsGuide();
 }
