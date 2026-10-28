@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAP.JS (PUHAS JA VIGADETA KAARDIMOODUL)
+   GOWALK PRO — MAP.JS (100% VÕTMEVABA TUME KAART JA STABIILNE HUD)
    ========================================================================== */
 
 import { state, saveState, getMissingSteps } from './state.js';
@@ -31,14 +31,15 @@ function getInitialStartCoords() {
 
 let startCoords = getInitialStartCoords();
 
+// OpenStreetMap kaardid (100% tasuta, ei mingeid API-võtmeid ega vesimärke)
 const TILE_LAYERS = {
   dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    options: { maxZoom: 20, subdomains: 'abcd' }
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: { maxZoom: 19, className: 'gw-midnight-tile-filter' }
   },
   light: {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    options: { maxZoom: 20, subdomains: 'abcd' }
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: { maxZoom: 19 }
   },
   hybrid: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -50,11 +51,18 @@ const TILE_LAYERS = {
   }
 };
 
-function injectCleanMapStyles() {
-  if (document.getElementById('gw-clean-map-styles')) return;
+function injectMidnightMapStyles() {
+  if (document.getElementById('gw-midnight-map-css')) return;
   const st = document.createElement('style');
-  st.id = 'gw-clean-map-styles';
+  st.id = 'gw-midnight-map-css';
   st.textContent = [
+    /* Midnight Indigo tume filter OpenStreetMapi kaartidele (asendab kõik tasulised serverid) */
+    '.gw-midnight-tile-filter {',
+    '  filter: brightness(0.65) invert(100%) contrast(115%) hue-rotate(200deg) saturate(120%) !important;',
+    '}',
+    '.leaflet-container {',
+    '  background: #0b0f22 !important;',
+    '}',
     '.gw-pin-a-marker {',
     '  width: 34px; height: 34px; border-radius: 50%;',
     '  background: linear-gradient(135deg, #7c3aed, #ec4899);',
@@ -131,7 +139,7 @@ function createWaypointIcon(num) {
   });
 }
 
-function drawRouteLines(coordsLatLng, distanceMeters) {
+function drawRouteLines(coordsLatLng) {
   if (!map || !window.L) return;
 
   if (routeGlowPolyline) {
@@ -198,7 +206,7 @@ async function fetchAndDrawOsrmRoute(pointsArray, fitMapBounds) {
       const latLngs = route.geometry.coordinates.map(function (c) {
         return [c[1], c[0]];
       });
-      drawRouteLines(latLngs, route.distance);
+      drawRouteLines(latLngs);
       if (fitMapBounds && routePolyline) {
         map.fitBounds(routePolyline.getBounds(), { padding: [54, 54], maxZoom: 17 });
       }
@@ -206,11 +214,7 @@ async function fetchAndDrawOsrmRoute(pointsArray, fitMapBounds) {
     }
   } catch (e) {}
 
-  let fallbackDist = 0;
-  for (let i = 1; i < pointsArray.length; i++) {
-    fallbackDist += map.distance(pointsArray[i - 1], pointsArray[i]);
-  }
-  drawRouteLines(pointsArray, fallbackDist * 1.25);
+  drawRouteLines(pointsArray);
 }
 
 export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, numStopsOverride) {
@@ -221,7 +225,6 @@ export async function generateLoopRouteForSteps(targetSteps, routeTypeOverride, 
 
   const strideMeters = ((state.settings && state.settings.strideCm) || 76) / 100;
   const targetDistanceMeters = steps * strideMeters;
-
   const effectiveCircumference = targetDistanceMeters / 1.38;
   const radiusMeters = Math.max(80, effectiveCircumference / (2 * Math.PI));
 
@@ -264,7 +267,7 @@ export function clearCurrentRoute() {
   waypoints = [];
   lastGeneratedSteps = 0;
   rebuildWaypointMarkers();
-  drawRouteLines([], 0);
+  drawRouteLines([]);
 }
 
 export function undoLastWaypoint() {
@@ -272,7 +275,7 @@ export function undoLastWaypoint() {
   waypoints.pop();
   rebuildWaypointMarkers();
   if (waypoints.length === 0) {
-    drawRouteLines([], 0);
+    drawRouteLines([]);
   } else {
     const pts = [startCoords].concat(waypoints);
     fetchAndDrawOsrmRoute(pts, false);
@@ -280,7 +283,7 @@ export function undoLastWaypoint() {
 }
 
 export function initMapAndRouting(updateHudFn) {
-  injectCleanMapStyles();
+  injectMidnightMapStyles();
 
   const mapContainer = document.getElementById('map');
   if (!mapContainer || !window.L) return;
