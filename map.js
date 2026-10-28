@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — MAP.JS (100% VÕTMEVABA TUME KAART JA STABIILNE HUD)
+   GOWALK PRO — MAP.JS (STABIILNE KAART, TÄPPIS-GPS JA HUD ÜHENDUS)
    ========================================================================== */
 
 import { state, saveState, getMissingSteps } from './state.js';
@@ -26,20 +26,19 @@ function getInitialStartCoords() {
       }
     }
   } catch (e) {}
-  return [61.17, 25.55];
+  return [58.3859, 24.4971]; // Pärnu varuasukoht enne GPS-i lukustumist
 }
 
 let startCoords = getInitialStartCoords();
 
-// OpenStreetMap kaardid (100% tasuta, ei mingeid API-võtmeid ega vesimärke)
 const TILE_LAYERS = {
   dark: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    options: { maxZoom: 19, className: 'gw-midnight-tile-filter' }
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    options: { maxZoom: 20, subdomains: 'abcd' }
   },
   light: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    options: { maxZoom: 19 }
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    options: { maxZoom: 20, subdomains: 'abcd' }
   },
   hybrid: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -51,18 +50,11 @@ const TILE_LAYERS = {
   }
 };
 
-function injectMidnightMapStyles() {
-  if (document.getElementById('gw-midnight-map-css')) return;
+function injectMapStyles() {
+  if (document.getElementById('gw-map-styles')) return;
   const st = document.createElement('style');
-  st.id = 'gw-midnight-map-css';
+  st.id = 'gw-map-styles';
   st.textContent = [
-    /* Midnight Indigo tume filter OpenStreetMapi kaartidele (asendab kõik tasulised serverid) */
-    '.gw-midnight-tile-filter {',
-    '  filter: brightness(0.65) invert(100%) contrast(115%) hue-rotate(200deg) saturate(120%) !important;',
-    '}',
-    '.leaflet-container {',
-    '  background: #0b0f22 !important;',
-    '}',
     '.gw-pin-a-marker {',
     '  width: 34px; height: 34px; border-radius: 50%;',
     '  background: linear-gradient(135deg, #7c3aed, #ec4899);',
@@ -283,7 +275,7 @@ export function undoLastWaypoint() {
 }
 
 export function initMapAndRouting(updateHudFn) {
-  injectMidnightMapStyles();
+  injectMapStyles();
 
   const mapContainer = document.getElementById('map');
   if (!mapContainer || !window.L) return;
