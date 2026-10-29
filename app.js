@@ -1035,8 +1035,11 @@ function bootGoWalkApp() {
       const defSteps = missing >= 1000 ? Math.min(20000, Math.round(missing / 500) * 500) : 5000;
       const sliderEl = document.getElementById('gwRbSlider');
       const valEl = document.getElementById('gwRbValText');
-      if (sliderEl) sliderEl.value = String(defSteps);
-      if (valEl) valEl.textContent = defSteps.toLocaleString('et-EE');
+            if (sliderEl) {
+        sliderEl.value = String(defSteps);
+        sliderEl.dispatchEvent(new Event('input'));
+      }
+
       rbModal.classList.add('open');
       setBottomNavActive('routes');
     }
