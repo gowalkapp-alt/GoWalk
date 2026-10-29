@@ -830,10 +830,13 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
         document.getElementById('gwStopCount').textContent = String(rbStops);
         return;
       }
-      if (e.target.closest('#gwRbCreateBtn')) {
+            if (e.target.closest('#gwRbCreateBtn')) {
+        const activeTypeEl = rb.querySelector('.gw-rb-type.active');
+        const chosenType = activeTypeEl ? activeTypeEl.getAttribute('data-rtype') : 'loop';
+        const currentSteps = sliderEl ? parseInt(sliderEl.value, 10) || rbSteps : rbSteps;
         rb.classList.remove('open');
         goHomeFn();
-        generateLoopRouteForSteps(rbSteps);
+        generateLoopRouteForSteps(currentSteps, chosenType, rbStops);
       }
     });
   }
