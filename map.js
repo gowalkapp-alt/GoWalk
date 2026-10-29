@@ -15,6 +15,8 @@ let routeLine = null;
 let lastGeneratedBearing = Math.random() * 2 * Math.PI;
 let routeVariantCounter = 0;
 let lastTargetSteps = 0;
+let lastRouteType = 'loop';
+let lastStopsCount = 3;
 let floatingShuffleBtn = null;
 let cachedSafeNodes = { key: '', nodes: [] };
 let hudUpdateCallback = null;
@@ -74,7 +76,6 @@ export function initMapAndRouting(onHudUpdate) {
     opacity: 0.92
   }).addTo(map);
 
-  // Paneme alguspunkti (Pin A) kohe kaardile
   waypoints = [L.latLng(initialCoords[0], initialCoords[1])];
   rebuildWaypoints();
 
@@ -162,6 +163,27 @@ export function switchMapLayer(layerKey) {
 export function invalidateMapSize() {
   if (map) {
     setTimeout(() => map.invalidateSize(), 200);
+  }
+}
+
+function syncSafeToggleUI() {
+  const active = state.settings.safeLitOnly !== false;
+  const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
+  const safeToggleIconBox = document.getElementById('safeToggleIconBox');
+  const safeToggleSubtext = document.getElementById('safeToggleSubtext');
+  const safeToggleBadge = document.getElementById('safeToggleBadge');
+
+  if (safeToggleBtn) safeToggleBtn.classList.toggle('active', active);
+  if (safeToggleIconBox) {
+    safeToggleIconBox.innerHTML = active ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
+  }
+  if (safeToggleSubtext) {
+    safeToggleSubtext.textContent = active
+      ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
+      : 'Metsa-, pargi- ja loodusrajad on lubatud';
+  }
+  if (safeToggleBadge) {
+    safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
   }
 }
 
@@ -349,19 +371,9 @@ function setupRouteGeneratorUI() {
   });
 
   const safeToggleBtn = document.getElementById('safeLitRouteToggleBtn');
-  const safeToggleIconBox = document.getElementById('safeToggleIconBox');
-  const safeToggleSubtext = document.getElementById('safeToggleSubtext');
-  const safeToggleBadge = document.getElementById('safeToggleBadge');
-
   safeToggleBtn.addEventListener('click', () => {
     state.settings.safeLitOnly = !(state.settings.safeLitOnly !== false);
-    const active = state.settings.safeLitOnly;
-    safeToggleBtn.classList.toggle('active', active);
-    safeToggleIconBox.innerHTML = active ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
-    safeToggleSubtext.textContent = active
-      ? 'Väldib pimedaid metsaradu, eelistab tänavaid'
-      : 'Metsa-, pargi- ja loodusrajad on lubatud';
-    safeToggleBadge.textContent = active ? 'SEES' : 'VÄLJAS';
+    syncSafeToggleUI();
     updateFloatingShuffleLabel();
     saveState();
   });
@@ -380,7 +392,7 @@ function setupRouteGeneratorUI() {
           : parseInt(rawAttr, 10);
       stepsInput.value = val;
       lastTargetSteps = val;
-      generateLoopRouteForSteps(val);
+      generateLoopRouteForSteps(val, lastRouteType, lastStopsCount);
       popover.classList.remove('open');
     });
   });
@@ -389,7 +401,7 @@ function setupRouteGeneratorUI() {
     const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
     const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || fallback);
     lastTargetSteps = targetSteps;
-    generateLoopRouteForSteps(targetSteps);
+    generateLoopRouteForSteps(targetSteps, lastRouteType, lastStopsCount);
     popover.classList.remove('open');
   });
 
@@ -397,13 +409,13 @@ function setupRouteGeneratorUI() {
     const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
     const targetSteps = Math.max(300, parseInt(stepsInput.value, 10) || lastTargetSteps || fallback);
     lastTargetSteps = targetSteps;
-    generateLoopRouteForSteps(targetSteps);
+    generateLoopRouteForSteps(targetSteps, lastRouteType, lastStopsCount);
   });
 
   floatingShuffleBtn.addEventListener('click', () => {
     const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
     const targetSteps = lastTargetSteps || fallback;
-    generateLoopRouteForSteps(targetSteps);
+    generateLoopRouteForSteps(targetSteps, lastRouteType, lastStopsCount);
   });
 }
 
@@ -504,27 +516,30 @@ function buildTrueCircularWaypoints(
   centerBearingRad,
   turnSign,
   aspectRatio = 1.0,
-  safeNodes = []
+  safeNodes = [],
+  numStops = 3
 ) {
+  const stopsCount = Math.max(1, Math.min(8, parseInt(numStops, 10) || 3));
   const loopCenter = offsetCoordinate(startPoint, loopRadiusMeters, centerBearingRad);
   const angleA = centerBearingRad + Math.PI;
+  const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
 
-  const angle1 = angleA + turnSign * (Math.PI * 0.5);
-  const angle2 = angleA + turnSign * Math.PI;
-  const angle3 = angleA + turnSign * (Math.PI * 1.5);
+  const resultPoints = [startPoint];
 
-  let p1 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle1);
-  let p2 = offsetCoordinate(loopCenter, loopRadiusMeters * 1.08, angle2);
-  let p3 = offsetCoordinate(loopCenter, loopRadiusMeters * aspectRatio, angle3);
+  for (let k = 1; k <= stopsCount; k++) {
+    const fraction = k / (stopsCount + 1);
+    const theta = angleA + turnSign * (fraction * 2 * Math.PI);
+    const isFarHalf = Math.abs(fraction - 0.5) < 0.2;
+    const radiusScale = isFarHalf ? 1.08 : aspectRatio;
 
-  if (safeNodes && safeNodes.length > 0) {
-    const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
-    p1 = snapPointToSafeStreet(p1, safeNodes, snapLimit);
-    p2 = snapPointToSafeStreet(p2, safeNodes, snapLimit);
-    p3 = snapPointToSafeStreet(p3, safeNodes, snapLimit);
+    let pt = offsetCoordinate(loopCenter, loopRadiusMeters * radiusScale, theta);
+    if (safeNodes && safeNodes.length > 0) {
+      pt = snapPointToSafeStreet(pt, safeNodes, snapLimit);
+    }
+    resultPoints.push(pt);
   }
 
-  return [startPoint, p1, p2, p3];
+  return resultPoints;
 }
 
 function removeDeadEndSpurs(latlngs) {
@@ -586,8 +601,40 @@ async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
   return null;
 }
 
-export async function generateLoopRouteForSteps(targetSteps) {
+export async function generateLoopRouteForSteps(
+  targetSteps,
+  routeTypeOverride = null,
+  numStopsOverride = null
+) {
   if (!map) return;
+
+  // Kui väärtusi ei antud otse kaasa, loeme need "Loo jalutusring" modaalist (kui see on olemas)
+  let chosenType = routeTypeOverride;
+  if (!chosenType) {
+    const activeTypeEl = document.querySelector('#gwRouteBuilderModal .gw-rb-type.active');
+    chosenType = activeTypeEl ? activeTypeEl.getAttribute('data-rtype') : lastRouteType || 'loop';
+  }
+  lastRouteType = chosenType;
+
+  let stopsCount = parseInt(numStopsOverride, 10);
+  if (Number.isNaN(stopsCount) || stopsCount < 1) {
+    const stopCountEl = document.getElementById('gwStopCount');
+    stopsCount = stopCountEl ? parseInt(stopCountEl.textContent, 10) || 3 : lastStopsCount || 3;
+  }
+  stopsCount = Math.max(1, Math.min(8, stopsCount));
+  lastStopsCount = stopsCount;
+
+  // Seadistame käitumise vastavalt valitud marsruudi tüübile
+  if (chosenType === 'park') {
+    state.settings.safeLitOnly = false;
+  } else if (chosenType === 'loop') {
+    state.settings.safeLitOnly = true;
+  } else if (chosenType === 'surprise') {
+    state.settings.safeLitOnly = Math.random() > 0.45;
+  }
+  syncSafeToggleUI();
+  saveState();
+
   const strideMeters = (state.settings.strideCm || 76) / 100;
   const targetMeters = targetSteps * strideMeters;
   const safeLitOnly = state.settings.safeLitOnly !== false;
@@ -595,19 +642,35 @@ export async function generateLoopRouteForSteps(targetSteps) {
 
   const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
 
-  const angleShift = Math.PI * 0.53 + Math.random() * (Math.PI * 0.38);
+  const angleShift =
+    chosenType === 'discover'
+      ? Math.PI * 0.68 + Math.random() * (Math.PI * 0.45)
+      : Math.PI * 0.53 + Math.random() * (Math.PI * 0.38);
   lastGeneratedBearing = (lastGeneratedBearing + angleShift) % (2 * Math.PI);
 
   routeVariantCounter += 1;
   const turnSign = routeVariantCounter % 2 === 0 ? 1 : -1;
-  const aspectRatios = [0.95, 0.82, 1.12];
-  const aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
+
+  let aspectRatio = 0.96;
+  if (chosenType === 'discover') {
+    aspectRatio = 1.18;
+  } else if (chosenType === 'surprise') {
+    const surpriseRatios = [0.78, 1.0, 1.24];
+    aspectRatio = surpriseRatios[routeVariantCounter % surpriseRatios.length];
+  } else {
+    const aspectRatios = [0.95, 0.85, 1.1];
+    aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
+  }
 
   let loopRadiusMeters = Math.max(100, targetMeters / 8.0);
 
   if (floatingShuffleBtn) {
     floatingShuffleBtn.classList.add('visible');
-    floatingShuffleBtn.innerHTML = `${LUCIDE_SVGS.loader}<span>Otsin ohutut ringrada...</span>`;
+    const loadingLabel =
+      chosenType === 'park'
+        ? 'Otsin pargi- ja loodusrada...'
+        : 'Otsin sobivat ringrada...';
+    floatingShuffleBtn.innerHTML = `${LUCIDE_SVGS.loader}<span>${loadingLabel}</span>`;
   }
 
   const safeNodes = safeLitOnly
@@ -620,7 +683,8 @@ export async function generateLoopRouteForSteps(targetSteps) {
     lastGeneratedBearing,
     turnSign,
     aspectRatio,
-    safeNodes
+    safeNodes,
+    stopsCount
   );
 
   try {
@@ -637,7 +701,8 @@ export async function generateLoopRouteForSteps(targetSteps) {
           lastGeneratedBearing,
           turnSign,
           aspectRatio,
-          safeNodes
+          safeNodes,
+          stopsCount
         );
         const refinedRoute = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
         if (refinedRoute) route = refinedRoute;
@@ -648,11 +713,16 @@ export async function generateLoopRouteForSteps(targetSteps) {
       let latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
       latlngs = removeDeadEndSpurs(latlngs);
 
-      if (latlngs.length >= 12) {
-        const q1 = latlngs[Math.floor(latlngs.length * 0.25)];
-        const q2 = latlngs[Math.floor(latlngs.length * 0.5)];
-        const q3 = latlngs[Math.floor(latlngs.length * 0.75)];
-        waypoints = [startPoint, q1, q2, q3];
+      if (latlngs.length >= stopsCount + 4) {
+        const sampledWaypoints = [startPoint];
+        for (let k = 1; k <= stopsCount; k++) {
+          const idx = Math.min(
+            latlngs.length - 2,
+            Math.max(1, Math.floor((latlngs.length * k) / (stopsCount + 1)))
+          );
+          sampledWaypoints.push(latlngs[idx]);
+        }
+        waypoints = sampledWaypoints;
       }
 
       rebuildWaypoints(latlngs, true);
