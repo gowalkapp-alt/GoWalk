@@ -19,16 +19,31 @@ let floatingShuffleBtn = null;
 let cachedSafeNodes = { key: '', nodes: [] };
 let hudUpdateCallback = null;
 
+function getSavedOrDefaultStartLatLng() {
+  try {
+    const raw = localStorage.getItem('gowalk_last_precise_gps');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+        return [parsed.lat, parsed.lng];
+      }
+    }
+  } catch (e) {}
+  return [58.3859, 24.4971];
+}
+
 export function initMapAndRouting(onHudUpdate) {
   hudUpdateCallback = onHudUpdate;
 
   const mapEl = document.getElementById('map');
   if (!mapEl || !window.L) return;
 
+  const initialCoords = getSavedOrDefaultStartLatLng();
+
   map = L.map('map', {
     zoomControl: false,
     attributionControl: true
-  }).setView([58.3859, 24.4971], 14);
+  }).setView(initialCoords, 15);
 
   tileLayers = {
     dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
@@ -59,6 +74,10 @@ export function initMapAndRouting(onHudUpdate) {
     opacity: 0.92
   }).addTo(map);
 
+  // Paneme alguspunkti (Pin A) kohe kaardile
+  waypoints = [L.latLng(initialCoords[0], initialCoords[1])];
+  rebuildWaypoints();
+
   document.querySelectorAll('.layer-chip').forEach(chip => {
     chip.addEventListener('click', () => switchMapLayer(chip.dataset.layer));
   });
@@ -87,10 +106,10 @@ export function initMapAndRouting(onHudUpdate) {
   const clearBtn = document.getElementById('clearRouteBtn');
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
-      waypoints = [];
+      const startPt = waypoints.length > 0 ? [waypoints[0]] : [];
+      waypoints = startPt;
       routeLine.setLatLngs([]);
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
+      rebuildWaypoints();
       plannedRoute.steps = 0;
       plannedRoute.distanceKm = 0;
       setFloatingShuffleVisible(false);
@@ -98,26 +117,31 @@ export function initMapAndRouting(onHudUpdate) {
     });
   }
 
+  const locateUserOnMap = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      map.setView(latlng, Math.max(map.getZoom(), 15));
+      if (waypoints.length === 0) {
+        waypoints.push(latlng);
+        rebuildWaypoints();
+      } else {
+        waypoints[0] = latlng;
+        rebuildWaypoints();
+      }
+    });
+  };
+
   const locateBtn = document.getElementById('locateMeBtn');
   if (locateBtn) {
-    locateBtn.addEventListener('click', () => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(pos => {
-        const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-        map.setView(latlng, 15);
-        if (waypoints.length === 0) {
-          waypoints.push(latlng);
-          rebuildWaypoints();
-        } else {
-          waypoints[0] = latlng;
-          rebuildWaypoints();
-        }
-      });
-    });
+    locateBtn.addEventListener('click', locateUserOnMap);
   }
 
   setupRouteGeneratorUI();
   switchMapLayer(state.settings.mapLayer || 'dark');
+
+  // Küsi kasutaja asukohta automaatselt kohe äpi avamisel
+  setTimeout(locateUserOnMap, 350);
 }
 
 export function switchMapLayer(layerKey) {
