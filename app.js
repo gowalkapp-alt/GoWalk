@@ -54,19 +54,30 @@ function createPngGradient(c1, c2, c3) {
   }
 }
 
+let deferredPwaPrompt = null;
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault();
+  deferredPwaPrompt = e;
+});
+
 function setupFaviconAndPWA() {
+  const primaryIcon = 'favicon.jpg';
+  const secondaryIcon = 'favicon.png';
   const fallbackGitHubIcon = 'file_000000003a8c820abfebb762ae22beff.png';
-  const primaryIcon = 'favicon.png';
+  const fullAppUrl = new URL('./', window.location.href).href;
 
   function applyIconLinks(hrefUrl) {
+    const resolvedIconUrl = new URL(hrefUrl, window.location.href).href;
+    const imgType = hrefUrl.endsWith('.jpg') || hrefUrl.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+
     let iconLink = document.querySelector('link[rel="icon"]');
     if (!iconLink) {
       iconLink = document.createElement('link');
       iconLink.rel = 'icon';
-      iconLink.type = 'image/png';
       document.head.appendChild(iconLink);
     }
-    iconLink.href = hrefUrl;
+    iconLink.type = imgType;
+    iconLink.href = resolvedIconUrl;
 
     let appleLink = document.querySelector('link[rel="apple-touch-icon"]');
     if (!appleLink) {
@@ -74,20 +85,21 @@ function setupFaviconAndPWA() {
       appleLink.rel = 'apple-touch-icon';
       document.head.appendChild(appleLink);
     }
-    appleLink.href = hrefUrl;
+    appleLink.href = resolvedIconUrl;
 
     const manifestObj = {
       name: 'GoWalk Pro',
       short_name: 'GoWalk',
-      start_url: './',
+      start_url: fullAppUrl,
+      scope: fullAppUrl,
       display: 'standalone',
       background_color: '#0f1429',
       theme_color: '#0f1429',
       icons: [
         {
-          src: new URL(hrefUrl, window.location.href).href,
+          src: resolvedIconUrl,
           sizes: '512x512',
-          type: 'image/png',
+          type: imgType,
           purpose: 'any maskable'
         }
       ]
@@ -107,9 +119,54 @@ function setupFaviconAndPWA() {
     applyIconLinks(primaryIcon);
   };
   testImg.onerror = function () {
-    applyIconLinks(fallbackGitHubIcon);
+    const testPng = new Image();
+    testPng.onload = function () {
+      applyIconLinks(secondaryIcon);
+    };
+    testPng.onerror = function () {
+      applyIconLinks(fallbackGitHubIcon);
+    };
+    testPng.src = secondaryIcon;
   };
   testImg.src = primaryIcon;
+
+  // Ühendame "Paigalda kohe avaekraanile" nupu (#triggerPwaInstallBtn)
+  const installBtn = document.getElementById('triggerPwaInstallBtn');
+  if (installBtn && !installBtn.dataset.pwaBound) {
+    installBtn.dataset.pwaBound = '1';
+
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+
+    if (isStandalone) {
+      installBtn.innerHTML = '<i data-lucide="check-circle"></i><span>Äpp on juba avaekraanil ✓</span>';
+    }
+
+    installBtn.addEventListener('click', async function () {
+      if (deferredPwaPrompt) {
+        deferredPwaPrompt.prompt();
+        const choice = await deferredPwaPrompt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          installBtn.innerHTML = '<i data-lucide="check-circle"></i><span>Paigaldatud avaekraanile ✓</span>';
+          if (window.lucide) window.lucide.createIcons();
+        }
+        deferredPwaPrompt = null;
+        return;
+      }
+
+      const instructionsBox = document.querySelector('#installModal .install-instructions');
+      if (instructionsBox) {
+        instructionsBox.style.border = '1px solid #ec4899';
+        instructionsBox.style.boxShadow = '0 0 18px rgba(236, 72, 153, 0.35)';
+        instructionsBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      const spanEl = installBtn.querySelector('span');
+      if (spanEl) {
+        spanEl.textContent = 'Vali brauseri menüüst "Add to Home screen" ↓';
+      }
+    });
+  }
 }
 
 // ==========================================================================
@@ -209,18 +266,6 @@ function setupPrecisionGpsLocator() {
     } catch (e) {}
   }
 
-  function loadLastPreciseFix() {
-    try {
-      const raw = localStorage.getItem('gowalk_last_precise_gps');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed && Date.now() - parsed.ts < 12 * 3600 * 1000) {
-        return parsed;
-      }
-    } catch (e) {}
-    return null;
-  }
-
   function stopActiveRefinement() {
     if (activeRefineWatchId !== null) {
       origClearWatch(activeRefineWatchId);
@@ -240,24 +285,20 @@ function setupPrecisionGpsLocator() {
 
     let bestPos = null;
     let bestAccuracy = Infinity;
-    const startTimeMs = Date.now();
-    const cachedPrecise = loadLastPreciseFix();
 
     activeRefineWatchId = origWatchPosition(
       function (pos) {
         const acc = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
-        const elapsedMs = Date.now() - startTimeMs;
 
-        // Kui esimene vastus toas on väga ebatäpne mobiilimast (> 250 m), oota kuni 3.5 s täpsemat satelliidi/Wi-Fi signaali
-        if (acc > 250 && elapsedMs < 3500) {
-          showGpsToast('Täpsustan GPS-signaali (±' + Math.round(acc) + ' m)...', false);
-          if (!bestPos && cachedPrecise && cachedPrecise.acc < 60) {
-            movePinAMarkerOnMap(cachedPrecise.lat, cachedPrecise.lng);
-            if (map) map.setView([cachedPrecise.lat, cachedPrecise.lng], Math.max(map.getZoom(), 16));
+        // Liigutame kaardi kohe esimese signaaliga sinu tegelikku asukohta ja täpsustame edasi
+        if (!bestPos) {
+          if (typeof successCallback === 'function') successCallback(pos);
+          movePinAMarkerOnMap(pos.coords.latitude, pos.coords.longitude);
+          if (map) {
+            map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 15), {
+              animate: true
+            });
           }
-          bestPos = pos;
-          bestAccuracy = acc;
-          return;
         }
 
         if (acc < bestAccuracy) {
@@ -298,7 +339,6 @@ function setupPrecisionGpsLocator() {
       }
     );
 
-    // Lõpeta otsing 6.5 sekundi pärast parima leitud tulemusega
     activeRefineTimer = setTimeout(function () {
       if (bestPos) {
         if (typeof successCallback === 'function') {
@@ -329,12 +369,10 @@ function setupPrecisionGpsLocator() {
     }, 6500);
   }
 
-  // Asenda tavaline getCurrentPosition täppis-GPS mootoriga
   navigator.geolocation.getCurrentPosition = function (success, error) {
     runHighPrecisionLocationLock(success, error);
   };
 
-  // Lisa ka otsene klikikuular parempoolsele GPS-sihiku nupule
   document.addEventListener(
     'click',
     function (e) {
@@ -628,6 +666,133 @@ function setupStrideCalculator(updateHudFn) {
   }
 }
 
+// ==========================================================================
+// 4. PUNKT: MIDNIGHT INDIGO NIME MUUTMISE & SISSELOGIMISE MODAALAKNAD
+// ==========================================================================
+
+function setupProfileAndAuthModals(renderProfileFn, refreshAllUIFn) {
+  // 1. Kasutajanime muutmise modaalaken
+  if (!document.getElementById('gwNameModalOverlay')) {
+    const nameOv = document.createElement('div');
+    nameOv.id = 'gwNameModalOverlay';
+    nameOv.className = 'gw-calc-overlay';
+    nameOv.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title"><i data-lucide="user-pen" style="color:#ec4899;"></i> Muuda kasutajanime</span>',
+          '<button type="button" class="gw-calc-close" id="gwNameCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div class="gw-calc-field">',
+          '<span class="gw-calc-lbl"><span>Sinu kuvatav nimi</span></span>',
+          '<input type="text" id="gwProfileNameInput" class="gw-calc-input" placeholder="Nt Karmo" maxlength="32" />',
+        '</div>',
+        '<button type="button" class="gw-calc-apply" id="gwNameSaveBtn">Salvesta nimi</button>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(nameOv);
+
+    nameOv.addEventListener('click', function (e) {
+      if (e.target === nameOv || e.target.closest('#gwNameCloseBtn')) {
+        nameOv.classList.remove('open');
+        return;
+      }
+      if (e.target.closest('#gwNameSaveBtn')) {
+        const inp = document.getElementById('gwProfileNameInput');
+        const newName = (inp ? inp.value : '').trim();
+        if (newName.length > 0) {
+          state.profile.name = newName;
+          saveState();
+          renderProfileFn();
+        }
+        nameOv.classList.remove('open');
+      }
+    });
+  }
+
+  // 2. Sisselogimise / Väljalogimise modaalaken
+  if (!document.getElementById('gwAuthModalOverlay')) {
+    const authOv = document.createElement('div');
+    authOv.id = 'gwAuthModalOverlay';
+    authOv.className = 'gw-calc-overlay';
+    authOv.innerHTML = [
+      '<div class="gw-calc-card">',
+        '<div class="gw-calc-head">',
+          '<span class="gw-calc-title" id="gwAuthModalTitle"><i data-lucide="shield-check" style="color:#ec4899;"></i> GoWalk Pilvekonto</span>',
+          '<button type="button" class="gw-calc-close" id="gwAuthCloseBtn"><i data-lucide="x"></i></button>',
+        '</div>',
+        '<div id="gwAuthLoggedOutPane" style="display:flex;flex-direction:column;gap:12px;">',
+          '<p style="font-size:0.78rem;color:#cbd5e1;line-height:1.45;margin:0;">Seo oma sammud ja ajalugu e-posti või Google\'i kontoga, et andmed säiliksid ka telefoni vahetades:</p>',
+          '<div class="gw-calc-field">',
+            '<span class="gw-calc-lbl"><span>Sinu e-posti aadress</span></span>',
+            '<input type="email" id="gwAuthEmailInput" class="gw-calc-input" placeholder="sinu.nimi@gmail.com" />',
+          '</div>',
+          '<div id="gwAuthFeedback" style="font-size:0.75rem;color:#f472b6;min-height:14px;"></div>',
+          '<button type="button" class="gw-calc-apply" id="gwAuthEmailSubmitBtn">Jätka e-posti aadressiga</button>',
+          '<button type="button" id="gwAuthGoogleOAuthBtn" style="width:100%;padding:11px;border-radius:999px;background:rgba(18,24,52,0.92);border:1px solid rgba(168,85,247,0.38);color:#e2e8f0;font:700 0.82rem inherit;cursor:pointer;">Ühenda Google\'i kontoga (OAuth)</button>',
+        '</div>',
+        '<div id="gwAuthLoggedInPane" style="display:none;flex-direction:column;gap:12px;">',
+          '<div class="gw-calc-resbox" style="flex-direction:column;align-items:flex-start;gap:4px;">',
+            '<span style="font-size:0.72rem;color:#94a3b8;">Sisselogitud konto:</span>',
+            '<strong id="gwAuthCurrentEmail" style="font-size:0.95rem;color:#fff;word-break:break-all;"></strong>',
+          '</div>',
+          '<button type="button" id="gwAuthConfirmLogoutBtn" style="width:100%;padding:12px;border-radius:999px;background:linear-gradient(135deg,#e11d48,#f43f5e);border:none;color:#fff;font:800 0.9rem inherit;cursor:pointer;">Logi kontolt välja</button>',
+        '</div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(authOv);
+
+    authOv.addEventListener('click', async function (e) {
+      if (e.target === authOv || e.target.closest('#gwAuthCloseBtn')) {
+        authOv.classList.remove('open');
+        return;
+      }
+
+      if (e.target.closest('#gwAuthEmailSubmitBtn')) {
+        const emailInp = document.getElementById('gwAuthEmailInput');
+        const fb = document.getElementById('gwAuthFeedback');
+        const cleanEmail = (emailInp ? emailInp.value : '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@')) {
+          if (fb) fb.textContent = 'Palun sisesta korrektne e-posti aadress.';
+          return;
+        }
+        if (fb) fb.textContent = 'Ühendan pilvekontoga...';
+        await switchUserContext(
+          'email_' + cleanEmail,
+          cleanEmail,
+          state.profile.name !== 'Kõndija Pro' ? state.profile.name : cleanEmail.split('@')[0],
+          null,
+          refreshAllUIFn
+        );
+        authOv.classList.remove('open');
+        return;
+      }
+
+      if (e.target.closest('#gwAuthGoogleOAuthBtn')) {
+        const fb = document.getElementById('gwAuthFeedback');
+        if (!supabaseClient) {
+          if (fb) fb.textContent = 'Pilveühendus laeb, kasuta e-posti välja üleval.';
+          return;
+        }
+        try {
+          const res = await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin + window.location.pathname }
+          });
+          if (res.error) throw res.error;
+        } catch (err) {
+          if (fb) fb.textContent = 'Google OAuth pole veel aktiveeritud – sisesta ülal oma e-post.';
+        }
+        return;
+      }
+
+      if (e.target.closest('#gwAuthConfirmLogoutBtn')) {
+        authOv.classList.remove('open');
+        await performFullLogout();
+      }
+    });
+  }
+}
+
 function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSettingsFn, goHomeFn) {
   setupFaviconAndPWA();
 
@@ -661,8 +826,8 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.subview-modal { padding-bottom: 76px !important; }',
       '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
-      '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
+      '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
       '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
       '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
       '#saveStepsOnlyBtn, #dialSaveOnlyBtn { background: rgba(22, 27, 58, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
@@ -701,16 +866,27 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     document.head.appendChild(st);
   }
 
+  // Uuendame Abi & Kasutusjuhendi (#helpModal) kaardid
   const helpModal = document.getElementById('helpModal');
   if (helpModal) {
-    const cards = helpModal.querySelectorAll('p, div, span, h4, h3');
-    for (let i = 0; i < cards.length; i++) {
-      if (cards[i].textContent && cards[i].textContent.indexOf('Kuidas töötab sünkroniseerimine') !== -1 && cards[i].children.length === 0) {
-        cards[i].textContent = 'Automaatne jalutusring & sammulugeja';
-      }
-      if (cards[i].textContent && cards[i].textContent.indexOf('Terviseandmete sünkroniseerimine') !== -1 && cards[i].children.length === 0) {
-        cards[i].textContent = 'Ava alt menüüst "Marsruudid", vali soovitud sammud või aeg ning GoWalk koostab sulle täpse jalutusringi algusega sinu asukohast.';
-      }
+    const helpBody = helpModal.querySelector('.subview-body');
+    if (helpBody && !helpBody.dataset.updatedHelp) {
+      helpBody.dataset.updatedHelp = '1';
+      helpBody.innerHTML = [
+        '<div class="help-card">',
+          '<h4><i data-lucide="locate-fixed"></i> Täpne GPS & Alguspunkt (Pin A)</h4>',
+          '<p>Äpp tuvastab avamisel automaatselt sinu asukoha. Kui soovid alguspunkti muuta, hoia näppu lillal alguspunktil (<strong>Pin A</strong>) ja lohista see sobivasse kohta või vajuta kaardi paremal servas sihiku nupule.</p>',
+          '<p style="margin-top:4px;font-size:12px;color:#cbd5e1;"><strong>Nipp:</strong> Täpseima siseruumi GPS-i jaoks hoia telefonis sees <em>Täpne asukoht (Precise Location)</em> ja Wi-Fi otsing.</p>',
+        '</div>',
+        '<div class="help-card">',
+          '<h4><i data-lucide="sparkles"></i> Loo jalutusring & Teine suund</h4>',
+          '<p>Ava alumiselt ribalt <strong>Marsruudid</strong> (või vajuta kaardil sädelevale nupule), vali soovitud sammud, aeg või marsruudi tüüp ning GoWalk joonistab sulle alguspunktist (Pin A) täpse ringi. Suuna muutmiseks vajuta kaardil <strong>Teine suund</strong>.</p>',
+        '</div>',
+        '<div class="help-card">',
+          '<h4><i data-lucide="footprints"></i> 360° Sammuketas & Kõnni salvestamine</h4>',
+          '<p>Puuduta avalehel oma sammude arvu või protsendirõngast, et avada <strong>360° sammuketas</strong> – sealt saad muuta päeva eesmärki, lisada tehtud samme ja koostada puuduvate sammude jagu jalutusringi.</p>',
+        '</div>'
+      ].join('');
     }
   }
 
@@ -830,7 +1006,7 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
         document.getElementById('gwStopCount').textContent = String(rbStops);
         return;
       }
-            if (e.target.closest('#gwRbCreateBtn')) {
+      if (e.target.closest('#gwRbCreateBtn')) {
         const activeTypeEl = rb.querySelector('.gw-rb-type.active');
         const chosenType = activeTypeEl ? activeTypeEl.getAttribute('data-rtype') : 'loop';
         const currentSteps = sliderEl ? parseInt(sliderEl.value, 10) || rbSteps : rbSteps;
@@ -919,11 +1095,16 @@ function bootGoWalkApp() {
   const editNameBtn = document.getElementById('editNameBtn');
   if (editNameBtn) {
     editNameBtn.addEventListener('click', function () {
-      const newName = prompt('Sisesta oma kasutajanimi:', state.profile.name);
-      if (newName && newName.trim().length > 0) {
-        state.profile.name = newName.trim();
-        saveState();
-        renderProfile();
+      const nameOv = document.getElementById('gwNameModalOverlay');
+      const nameInp = document.getElementById('gwProfileNameInput');
+      if (nameOv && nameInp) {
+        nameInp.value = state.profile.name || '';
+        nameOv.classList.add('open');
+        if (window.lucide) window.lucide.createIcons();
+        setTimeout(function () {
+          nameInp.focus();
+          nameInp.select();
+        }, 60);
       }
     });
   }
@@ -940,43 +1121,27 @@ function bootGoWalkApp() {
 
   const googleAuthBtn = document.getElementById('googleAuthBtn');
   if (googleAuthBtn) {
-    googleAuthBtn.addEventListener('click', async function () {
-      if (!supabaseClient) {
-        alert('Pilveühendus luuakse, proovi hetke pärast uuesti.');
-        return;
-      }
+    googleAuthBtn.addEventListener('click', function () {
+      const authOv = document.getElementById('gwAuthModalOverlay');
+      if (!authOv) return;
+
+      const outPane = document.getElementById('gwAuthLoggedOutPane');
+      const inPane = document.getElementById('gwAuthLoggedInPane');
+      const curEmailEl = document.getElementById('gwAuthCurrentEmail');
+      const fb = document.getElementById('gwAuthFeedback');
+      if (fb) fb.textContent = '';
 
       if (state.profile.email) {
-        const confirmLogout = confirm(
-          'Oled sisse logitud kui ' + state.profile.email + '.\n\nKas soovid välja logida?'
-        );
-        if (confirmLogout) {
-          await performFullLogout();
-        }
-        return;
+        if (outPane) outPane.style.display = 'none';
+        if (inPane) inPane.style.display = 'flex';
+        if (curEmailEl) curEmailEl.textContent = state.profile.email;
+      } else {
+        if (outPane) outPane.style.display = 'flex';
+        if (inPane) inPane.style.display = 'none';
       }
 
-      try {
-        const res = await supabaseClient.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin + window.location.pathname
-          }
-        });
-        if (res.error) throw res.error;
-      } catch (err) {
-        const manualEmail = prompt('Registreeru või logi sisse oma e-posti aadressiga:', '');
-        if (manualEmail && manualEmail.includes('@')) {
-          const cleanEmail = manualEmail.trim().toLowerCase();
-          await switchUserContext(
-            'email_' + cleanEmail,
-            cleanEmail,
-            cleanEmail.split('@')[0],
-            null,
-            refreshAllUI
-          );
-        }
-      }
+      authOv.classList.add('open');
+      if (window.lucide) window.lucide.createIcons();
     });
   }
 
@@ -1034,12 +1199,10 @@ function bootGoWalkApp() {
       const missing = getMissingSteps();
       const defSteps = missing >= 1000 ? Math.min(20000, Math.round(missing / 500) * 500) : 5000;
       const sliderEl = document.getElementById('gwRbSlider');
-      const valEl = document.getElementById('gwRbValText');
-            if (sliderEl) {
+      if (sliderEl) {
         sliderEl.value = String(defSteps);
         sliderEl.dispatchEvent(new Event('input'));
       }
-
       rbModal.classList.add('open');
       setBottomNavActive('routes');
     }
@@ -1513,7 +1676,6 @@ function bootGoWalkApp() {
       .catch(function () {});
   }
 
-  // Sea täppis-GPS paika enne kaardi alglaadimist, et juba avamisel leitaks täpne asukoht
   setupPrecisionGpsLocator();
   setupStepDialModal(updateHudUI, generateLoopRouteForSteps);
   initMapAndRouting(updateHudUI);
@@ -1526,6 +1688,7 @@ function bootGoWalkApp() {
   );
   setupStrideCalculator(updateHudUI);
   setupCustomMapStylePicker();
+  setupProfileAndAuthModals(renderProfile, refreshAllUI);
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
