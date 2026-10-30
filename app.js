@@ -850,6 +850,7 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
 
   const neonPng = createPngGradient('#7c3aed', '#c026d3', '#ec4899');
   const redPng = createPngGradient('#e11d48', '#f43f5e', '#fb7185');
+  const greenPng = createPngGradient('#059669', '#10b981', '#34d399');
 
   if (!document.getElementById('gw-midnight-indigo-theme')) {
     const st = document.createElement('style');
@@ -862,9 +863,16 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '.subview-modal { padding-bottom: 76px !important; }',
       '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
+      '.hud-action-row { display: flex !important; gap: 10px !important; align-items: center !important; width: 100% !important; }',
       '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
       '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
-      '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; }',
+      '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; border-color: rgba(251, 113, 133, 0.65) !important; box-shadow: 0 6px 20px rgba(225, 29, 72, 0.45) !important; font-size: 14px !important; }',
+      '#pauseWalkBtn { height: 48px !important; padding: 0 18px !important; border-radius: 999px !important; background: rgba(28, 34, 72, 0.95) !important; border: 1px solid rgba(251, 191, 36, 0.55) !important; color: #fbbf24 !important; font-family: var(--font-display) !important; font-size: 14px !important; font-weight: 800 !important; display: none; align-items: center !important; justify-content: center !important; gap: 7px !important; cursor: pointer !important; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45) !important; flex-shrink: 0 !important; white-space: nowrap !important; transition: transform 0.15s ease, box-shadow 0.2s ease !important; }',
+      '#pauseWalkBtn.visible { display: inline-flex !important; }',
+      '#pauseWalkBtn:active { transform: scale(0.96) !important; }',
+      '#pauseWalkBtn.paused-active { background-image: url("' + greenPng + '") !important; background-size: 100% 100% !important; border-color: rgba(110, 231, 183, 0.7) !important; color: #ffffff !important; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important; }',
+      '#pauseWalkBtn svg { width: 17px !important; height: 17px !important; stroke-width: 2.5px !important; }',
+      '#liveDuration.paused-blink { color: #fbbf24 !important; }',
       '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
       '#saveStepsOnlyBtn, #dialSaveOnlyBtn { background: rgba(22, 27, 58, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
       '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 3500; padding: 4px 8px; }',
@@ -1317,11 +1325,12 @@ function bootGoWalkApp() {
   );
 
   // ==========================================================================
-  // ALUMINE HUD & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS DRIFT FILTER)
+  // ALUMINE HUD, PAUS / JÄTKA & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS FILTER)
   // ==========================================================================
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 42;
   let isWalking = false;
+  let isPaused = false;
   let walkTimer = null;
   let lastTimerCheckMs = 0;
 
@@ -1368,7 +1377,11 @@ function bootGoWalkApp() {
 
     const hintBadge = document.getElementById('hudMissingHintBadge');
     if (hintBadge) {
-      hintBadge.textContent = missing > 0 ? 'Puudu ' + missing.toLocaleString('et-EE') : 'Täidetud ✓';
+      if (isWalking && isPaused) {
+        hintBadge.textContent = 'Pausil ⏸';
+      } else {
+        hintBadge.textContent = missing > 0 ? 'Puudu ' + missing.toLocaleString('et-EE') : 'Täidetud ✓';
+      }
     }
 
     const pctEl = document.getElementById('stepPercentText');
@@ -1388,7 +1401,10 @@ function bootGoWalkApp() {
 
     if (distEl) distEl.textContent = state.today.distanceKm.toFixed(2);
     if (calEl) calEl.textContent = state.today.calories;
-    if (durEl) durEl.textContent = formatDuration(state.today.durationSec || 0);
+    if (durEl) {
+      durEl.textContent = formatDuration(state.today.durationSec || 0);
+      durEl.classList.toggle('paused-blink', Boolean(isWalking && isPaused));
+    }
   }
 
   async function requestPocketWakeLock() {
@@ -1409,7 +1425,7 @@ function bootGoWalkApp() {
   }
 
   function handleDeviceMotion(event) {
-    if (!isWalking) return;
+    if (!isWalking || isPaused) return;
 
     const accG = event.accelerationIncludingGravity;
     const accLinear = event.acceleration;
@@ -1516,10 +1532,12 @@ function bootGoWalkApp() {
         livePositionDot.setLatLng(currentLatLng);
       }
 
-      appendWalkedTrackPoint(currentLatLng);
+      if (!isPaused) {
+        appendWalkedTrackPoint(currentLatLng);
+      }
     }
 
-    if (accuracy > 16) return;
+    if (isPaused || accuracy > 16) return;
 
     const nowMs = Date.now();
     if (!lastGpsLatLng || !lastGpsTimestampMs) {
@@ -1576,7 +1594,7 @@ function bootGoWalkApp() {
   }
 
   function syncWalkElapsedTime() {
-    if (!isWalking || !lastTimerCheckMs) return;
+    if (!isWalking || isPaused || !lastTimerCheckMs) return;
     const nowMs = Date.now();
     const deltaSec = Math.floor((nowMs - lastTimerCheckMs) / 1000);
     if (deltaSec >= 1) {
@@ -1588,7 +1606,9 @@ function bootGoWalkApp() {
 
   document.addEventListener('visibilitychange', function () {
     if (!isWalking) return;
-    syncWalkElapsedTime();
+    if (!isPaused) {
+      syncWalkElapsedTime();
+    }
     if (document.visibilityState === 'visible') {
       requestPocketWakeLock();
     }
@@ -1596,6 +1616,61 @@ function bootGoWalkApp() {
 
   const startWalkBtn = document.getElementById('startWalkBtn');
   const startWalkText = document.getElementById('startWalkText');
+  const actionRow = document.querySelector('.hud-action-row');
+
+  let pauseWalkBtn = document.getElementById('pauseWalkBtn');
+  if (!pauseWalkBtn && actionRow && startWalkBtn) {
+    pauseWalkBtn = document.createElement('button');
+    pauseWalkBtn.type = 'button';
+    pauseWalkBtn.id = 'pauseWalkBtn';
+    pauseWalkBtn.innerHTML = '<i data-lucide="pause"></i><span>Paus</span>';
+    actionRow.insertBefore(pauseWalkBtn, startWalkBtn);
+  }
+
+  function renderPauseButtonState() {
+    if (!pauseWalkBtn) return;
+    if (!isWalking) {
+      pauseWalkBtn.classList.remove('visible', 'paused-active');
+      return;
+    }
+    pauseWalkBtn.classList.add('visible');
+    pauseWalkBtn.classList.toggle('paused-active', isPaused);
+    pauseWalkBtn.innerHTML = isPaused
+      ? '<i data-lucide="play"></i><span>Jätka</span>'
+      : '<i data-lucide="pause"></i><span>Paus</span>';
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (pauseWalkBtn) {
+    pauseWalkBtn.addEventListener('click', function () {
+      if (!isWalking) return;
+
+      if (!isPaused) {
+        // Lülitame kõnni pausile
+        syncWalkElapsedTime();
+        isPaused = true;
+        lastTimerCheckMs = 0;
+        lastGpsLatLng = null;
+        lastGpsTimestampMs = 0;
+        pendingStepBuffer = 0;
+        isCadenceActive = false;
+        if (startWalkText) startWalkText.textContent = 'Lõpeta ja salvesta';
+      } else {
+        // Jätkame kõndi pausilt
+        isPaused = false;
+        lastTimerCheckMs = Date.now();
+        lastGpsLatLng = null;
+        lastGpsTimestampMs = 0;
+        pendingStepBuffer = 0;
+        isCadenceActive = false;
+        if (startWalkText) startWalkText.textContent = 'Lõpeta ja salvesta';
+      }
+
+      renderPauseButtonState();
+      updateHudUI();
+      saveState();
+    });
+  }
 
   if (startWalkBtn) {
     startWalkBtn.addEventListener('click', async function () {
@@ -1603,7 +1678,10 @@ function bootGoWalkApp() {
       startWalkBtn.classList.toggle('walking-active', isWalking);
 
       if (isWalking) {
-        if (startWalkText) startWalkText.textContent = 'Peata ja salvesta kõnd';
+        isPaused = false;
+        if (startWalkText) startWalkText.textContent = 'Lõpeta ja salvesta';
+        renderPauseButtonState();
+
         lastGpsLatLng = null;
         lastGpsTimestampMs = 0;
         gpsRemainderMeters = 0;
@@ -1622,8 +1700,14 @@ function bootGoWalkApp() {
             { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
           );
         }
+        updateHudUI();
       } else {
-        syncWalkElapsedTime();
+        if (!isPaused) {
+          syncWalkElapsedTime();
+        }
+        isPaused = false;
+        renderPauseButtonState();
+
         clearInterval(walkTimer);
         walkTimer = null;
         lastTimerCheckMs = 0;
