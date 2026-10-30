@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 3. LEAFLET MAP, LAYERS, SAFE LIT LOOP GENERATOR & OSRM ROUTING
+   GOWALK PRO — 3. LEAFLET MAP, LAYERS, SAFE LIT LOOP GENERATOR & GPS TRACK
    ========================================================================== */
 
 import { LUCIDE_SVGS } from './config.js';
@@ -11,6 +11,11 @@ let activeLayer = null;
 let waypoints = [];
 let markers = [];
 let routeLine = null;
+
+// Reaalselt läbitud kõnniraja (GPS-jälje) muutujad
+let walkedTrackGlow = null;
+let walkedTrackPolyline = null;
+let walkedCoordinates = [];
 
 let lastGeneratedBearing = Math.random() * 2 * Math.PI;
 let routeVariantCounter = 0;
@@ -32,6 +37,97 @@ function getSavedOrDefaultStartLatLng() {
     }
   } catch (e) {}
   return [58.3859, 24.4971];
+}
+
+export function clearWalkedTrack() {
+  walkedCoordinates = [];
+  if (walkedTrackGlow && map) {
+    map.removeLayer(walkedTrackGlow);
+    walkedTrackGlow = null;
+  }
+  if (walkedTrackPolyline && map) {
+    map.removeLayer(walkedTrackPolyline);
+    walkedTrackPolyline = null;
+  }
+}
+
+export function appendWalkedTrackPoint(latlngInput) {
+  if (!map || !window.L || !latlngInput) return;
+  const pt = Array.isArray(latlngInput)
+    ? L.latLng(latlngInput[0], latlngInput[1])
+    : L.latLng(latlngInput.lat, latlngInput.lng);
+
+  if (walkedCoordinates.length > 0) {
+    const lastPt = walkedCoordinates[walkedCoordinates.length - 1];
+    if (map.distance(lastPt, pt) < 3) return;
+  }
+
+  walkedCoordinates.push(pt);
+
+  if (!walkedTrackGlow) {
+    walkedTrackGlow = L.polyline(walkedCoordinates, {
+      color: '#38bdf8',
+      weight: 11,
+      opacity: 0.28,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(map);
+  } else {
+    walkedTrackGlow.setLatLngs(walkedCoordinates);
+  }
+
+  if (!walkedTrackPolyline) {
+    walkedTrackPolyline = L.polyline(walkedCoordinates, {
+      color: '#38bdf8',
+      weight: 5,
+      opacity: 0.96,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(map);
+  } else {
+    walkedTrackPolyline.setLatLngs(walkedCoordinates);
+  }
+}
+
+export function getWalkedTrackGeoJson() {
+  return walkedCoordinates.map(pt => [
+    +Number(pt.lat).toFixed(6),
+    +Number(pt.lng).toFixed(6)
+  ]);
+}
+
+export function restoreWalkedTrack(coordsArray, fitMapBounds = false) {
+  clearWalkedTrack();
+  if (!map || !window.L || !Array.isArray(coordsArray) || coordsArray.length === 0) return;
+
+  walkedCoordinates = coordsArray
+    .filter(c => Array.isArray(c) && c.length >= 2 && !Number.isNaN(Number(c[0])) && !Number.isNaN(Number(c[1])))
+    .map(c => L.latLng(Number(c[0]), Number(c[1])));
+
+  if (walkedCoordinates.length === 0) return;
+
+  walkedTrackGlow = L.polyline(walkedCoordinates, {
+    color: '#38bdf8',
+    weight: 11,
+    opacity: 0.28,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+
+  walkedTrackPolyline = L.polyline(walkedCoordinates, {
+    color: '#38bdf8',
+    weight: 5,
+    opacity: 0.96,
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(map);
+
+  if (fitMapBounds && walkedCoordinates.length >= 2) {
+    setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(walkedTrackPolyline.getBounds(), { padding: [58, 58], maxZoom: 18 });
+    }, 150);
+  }
 }
 
 export function initMapAndRouting(onHudUpdate) {
@@ -78,6 +174,11 @@ export function initMapAndRouting(onHudUpdate) {
 
   waypoints = [L.latLng(initialCoords[0], initialCoords[1])];
   rebuildWaypoints();
+
+  // Kui tänasel päeval on juba salvestatud kõnnijälg, kuvame selle kaardil
+  if (state.today && Array.isArray(state.today.walkTrack) && state.today.walkTrack.length > 1) {
+    restoreWalkedTrack(state.today.walkTrack, false);
+  }
 
   document.querySelectorAll('.layer-chip').forEach(chip => {
     chip.addEventListener('click', () => switchMapLayer(chip.dataset.layer));
@@ -608,7 +709,6 @@ export async function generateLoopRouteForSteps(
 ) {
   if (!map) return;
 
-  // Kui väärtusi ei antud otse kaasa, loeme need "Loo jalutusring" modaalist (kui see on olemas)
   let chosenType = routeTypeOverride;
   if (!chosenType) {
     const activeTypeEl = document.querySelector('#gwRouteBuilderModal .gw-rb-type.active');
@@ -624,7 +724,6 @@ export async function generateLoopRouteForSteps(
   stopsCount = Math.max(1, Math.min(8, stopsCount));
   lastStopsCount = stopsCount;
 
-  // Seadistame käitumise vastavalt valitud marsruudi tüübile
   if (chosenType === 'park') {
     state.settings.safeLitOnly = false;
   } else if (chosenType === 'loop') {
