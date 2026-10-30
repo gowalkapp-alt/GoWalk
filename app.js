@@ -18,7 +18,11 @@ import {
   initMapAndRouting,
   switchMapLayer,
   invalidateMapSize,
-  generateLoopRouteForSteps
+  generateLoopRouteForSteps,
+  appendWalkedTrackPoint,
+  getWalkedTrackGeoJson,
+  restoreWalkedTrack,
+  clearWalkedTrack
 } from './map.js';
 
 import { setupStepDialModal } from './dial.js';
@@ -130,7 +134,6 @@ function setupFaviconAndPWA() {
   };
   testImg.src = primaryIcon;
 
-  // Ühendame "Paigalda kohe avaekraanile" nupu (#triggerPwaInstallBtn)
   const installBtn = document.getElementById('triggerPwaInstallBtn');
   if (installBtn && !installBtn.dataset.pwaBound) {
     installBtn.dataset.pwaBound = '1';
@@ -290,7 +293,6 @@ function setupPrecisionGpsLocator() {
       function (pos) {
         const acc = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : 999;
 
-        // Liigutame kaardi kohe esimese signaaliga sinu tegelikku asukohta ja täpsustame edasi
         if (!bestPos) {
           if (typeof successCallback === 'function') successCallback(pos);
           movePinAMarkerOnMap(pos.coords.latitude, pos.coords.longitude);
@@ -385,7 +387,6 @@ function setupPrecisionGpsLocator() {
   );
 }
 
-// Kohandatud "Vaikimisi kaardistiil" Midnight Indigo valija
 function setupCustomMapStylePicker() {
   const selectEl = document.getElementById('settingMapStyle');
   if (!selectEl) return;
@@ -666,12 +667,7 @@ function setupStrideCalculator(updateHudFn) {
   }
 }
 
-// ==========================================================================
-// 4. PUNKT: MIDNIGHT INDIGO NIME MUUTMISE & SISSELOGIMISE MODAALAKNAD
-// ==========================================================================
-
 function setupProfileAndAuthModals(renderProfileFn, refreshAllUIFn) {
-  // 1. Kasutajanime muutmise modaalaken
   if (!document.getElementById('gwNameModalOverlay')) {
     const nameOv = document.createElement('div');
     nameOv.id = 'gwNameModalOverlay';
@@ -709,7 +705,6 @@ function setupProfileAndAuthModals(renderProfileFn, refreshAllUIFn) {
     });
   }
 
-  // 2. Sisselogimise / Väljalogimise modaalaken
   if (!document.getElementById('gwAuthModalOverlay')) {
     const authOv = document.createElement('div');
     authOv.id = 'gwAuthModalOverlay';
@@ -866,7 +861,6 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
     document.head.appendChild(st);
   }
 
-  // Uuendame Abi & Kasutusjuhendi (#helpModal) kaardid
   const helpModal = document.getElementById('helpModal');
   if (helpModal) {
     const helpBody = helpModal.querySelector('.subview-body');
@@ -1480,6 +1474,9 @@ function bootGoWalkApp() {
       } else {
         livePositionDot.setLatLng(currentLatLng);
       }
+      
+      // Salvestame ja joonistame reaalajas kõnnitud punkti kaardile
+      appendWalkedTrackPoint(currentLatLng);
     }
 
     if (accuracy > 16) return;
@@ -1600,6 +1597,9 @@ function bootGoWalkApp() {
         }
 
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
+
+        // Salvestame kõnnitud trajektoori mällu
+        state.today.walkTrack = getWalkedTrackGeoJson();
 
         loadStatsModuleSafely()
           .then(function (mod) {
