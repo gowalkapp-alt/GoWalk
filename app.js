@@ -173,7 +173,7 @@ function setupFaviconAndPWA() {
 }
 
 // ==========================================================================
-// TÄPPIS-GPS MOOTOR SISEoludesse + LIIKUV GPS-NUPP
+// VAIKNE TÄPPIS-GPS MOOTOR (VARIANT A: VAIKNE AVAMINE + TÄPP KAPSLIS)
 // ==========================================================================
 
 function setupPrecisionGpsLocator() {
@@ -186,6 +186,24 @@ function setupPrecisionGpsLocator() {
   let activeRefineWatchId = null;
   let activeRefineTimer = null;
   let toastHideTimer = null;
+  let dotResetTimer = null;
+  let lastManualGpsClickMs = 0;
+
+  function setBrandDotGpsState(mode) {
+    const dot = document.querySelector('.brand-dot');
+    if (!dot) return;
+    if (dotResetTimer) clearTimeout(dotResetTimer);
+    dot.classList.remove('gps-searching', 'gps-locked');
+
+    if (mode === 'searching') {
+      dot.classList.add('gps-searching');
+    } else if (mode === 'locked') {
+      dot.classList.add('gps-locked');
+      dotResetTimer = setTimeout(function () {
+        dot.classList.remove('gps-locked');
+      }, 4000);
+    }
+  }
 
   function getGpsToast() {
     let t = document.getElementById('gwGpsStatusToast');
@@ -193,7 +211,7 @@ function setupPrecisionGpsLocator() {
       t = document.createElement('div');
       t.id = 'gwGpsStatusToast';
       t.className = 'gw-gps-toast';
-      t.innerHTML = '<span class="gw-gps-dot"></span><span id="gwGpsToastText">Otsin täpset GPS-asukohta...</span>';
+      t.innerHTML = '<span class="gw-gps-dot"></span><span id="gwGpsToastText">GPS...</span>';
       document.body.appendChild(t);
     }
     return t;
@@ -209,8 +227,13 @@ function setupPrecisionGpsLocator() {
     if (isLocked) {
       toastHideTimer = setTimeout(function () {
         t.classList.remove('visible');
-      }, 2800);
+      }, 1500);
     }
+  }
+
+  function hideGpsToastImmediately() {
+    const t = document.getElementById('gwGpsStatusToast');
+    if (t) t.classList.remove('visible');
   }
 
   function findLocateButton() {
@@ -269,7 +292,7 @@ function setupPrecisionGpsLocator() {
     } catch (e) {}
   }
 
-  function stopActiveRefinement() {
+  function stopActiveRefinement(isLocked = false) {
     if (activeRefineWatchId !== null) {
       origClearWatch(activeRefineWatchId);
       activeRefineWatchId = null;
@@ -279,12 +302,19 @@ function setupPrecisionGpsLocator() {
       activeRefineTimer = null;
     }
     setGpsButtonAnimating(false);
+    setBrandDotGpsState(isLocked ? 'locked' : 'idle');
   }
 
-  function runHighPrecisionLocationLock(successCallback, errorCallback) {
-    stopActiveRefinement();
-    setGpsButtonAnimating(true);
-    showGpsToast('Otsin täpset GPS-asukohta...', false);
+  function runHighPrecisionLocationLock(successCallback, errorCallback, showVisualFeedback = false) {
+    stopActiveRefinement(false);
+    setBrandDotGpsState('searching');
+
+    if (showVisualFeedback) {
+      setGpsButtonAnimating(true);
+      showGpsToast('GPS otsing...', false);
+    } else {
+      hideGpsToastImmediately();
+    }
 
     let bestPos = null;
     let bestAccuracy = Infinity;
@@ -322,10 +352,12 @@ function setupPrecisionGpsLocator() {
           }
 
           if (acc <= 18) {
-            stopActiveRefinement();
-            showGpsToast('Täpne asukoht lukustatud (±' + Math.round(acc) + ' m) ✓', true);
-          } else {
-            showGpsToast('Täpsustan asukohta (±' + Math.round(acc) + ' m)...', false);
+            stopActiveRefinement(true);
+            if (showVisualFeedback) {
+              showGpsToast('GPS ±' + Math.round(acc) + ' m ✓', true);
+            }
+          } else if (showVisualFeedback) {
+            showGpsToast('GPS ±' + Math.round(acc) + ' m', false);
           }
         }
       },
@@ -352,27 +384,36 @@ function setupPrecisionGpsLocator() {
             animate: true
           });
         }
-        showGpsToast('Asukoht leitud (±' + Math.round(bestAccuracy) + ' m) ✓', true);
+        stopActiveRefinement(true);
+        if (showVisualFeedback) {
+          showGpsToast('GPS ±' + Math.round(bestAccuracy) + ' m ✓', true);
+        }
       } else {
         origGetCurrentPosition(
           function (fallbackPos) {
             if (typeof successCallback === 'function') successCallback(fallbackPos);
             movePinAMarkerOnMap(fallbackPos.coords.latitude, fallbackPos.coords.longitude);
-            showGpsToast('Asukoht leitud ✓', true);
+            stopActiveRefinement(true);
+            if (showVisualFeedback) {
+              showGpsToast('GPS lukustatud ✓', true);
+            }
           },
           function (err) {
-            showGpsToast('GPS-signaali ei leitud', true);
+            stopActiveRefinement(false);
+            if (showVisualFeedback) {
+              showGpsToast('GPS pole saadaval', true);
+            }
             if (typeof errorCallback === 'function') errorCallback(err);
           },
           { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
         );
       }
-      stopActiveRefinement();
-    }, 6500);
+    }, 6000);
   }
 
   navigator.geolocation.getCurrentPosition = function (success, error) {
-    runHighPrecisionLocationLock(success, error);
+    const isManualClick = Date.now() - lastManualGpsClickMs < 1200;
+    runHighPrecisionLocationLock(success, error, isManualClick);
   };
 
   document.addEventListener(
@@ -380,7 +421,7 @@ function setupPrecisionGpsLocator() {
     function (e) {
       const locateBtn = findLocateButton();
       if (locateBtn && locateBtn.contains(e.target)) {
-        runHighPrecisionLocationLock(null, null);
+        lastManualGpsClickMs = Date.now();
       }
     },
     true
@@ -1474,8 +1515,7 @@ function bootGoWalkApp() {
       } else {
         livePositionDot.setLatLng(currentLatLng);
       }
-      
-      // Salvestame ja joonistame reaalajas kõnnitud punkti kaardile
+
       appendWalkedTrackPoint(currentLatLng);
     }
 
@@ -1598,7 +1638,6 @@ function bootGoWalkApp() {
 
         if (startWalkText) startWalkText.textContent = 'Alusta kõndimist';
 
-        // Salvestame kõnnitud trajektoori mällu
         state.today.walkTrack = getWalkedTrackGeoJson();
 
         loadStatsModuleSafely()
