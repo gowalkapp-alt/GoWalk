@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GOWALK PRO — 6. MAIN ENTRY POINT, PRECISION INDOOR GPS & MIDNIGHT INDIGO UI
+   GOWALK PRO — 6. MAIN ENTRY POINT, PRECISION GPS, PAUSE/RESUME & WATCH SYNC
    ========================================================================== */
 
 import {
@@ -426,6 +426,378 @@ function setupPrecisionGpsLocator() {
     },
     true
   );
+}
+
+// ==========================================================================
+// KELLA & TELEFONI SAMMUDE JA GPX/TCX/CSV IMPORDIKESKUS (#syncModal)
+// ==========================================================================
+
+function calculateCoordsArrayDistanceMeters(coords) {
+  if (!Array.isArray(coords) || coords.length < 2) return 0;
+  const R = 6371000;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const p1 = coords[i - 1];
+    const p2 = coords[i];
+    const lat1 = (p1[0] * Math.PI) / 180;
+    const lat2 = (p2[0] * Math.PI) / 180;
+    const dLat = ((p2[0] - p1[0]) * Math.PI) / 180;
+    const dLon = ((p2[1] - p1[1]) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const seg = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (!Number.isNaN(seg) && seg < 2500) total += seg;
+  }
+  return total;
+}
+
+function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHomeFn) {
+  let syncModal = document.getElementById('syncModal');
+  if (!syncModal) {
+    syncModal = document.createElement('section');
+    syncModal.id = 'syncModal';
+    syncModal.className = 'subview-modal';
+    syncModal.innerHTML = [
+      '<header class="subview-header">',
+        '<h2>Kella & Telefoni Sünk</h2>',
+        '<button class="icon-btn close-subview"><i data-lucide="x"></i></button>',
+      '</header>',
+      '<div class="subview-body"></div>'
+    ].join('');
+    const appShell = document.querySelector('.app-viewport, .app-shell') || document.body;
+    appShell.appendChild(syncModal);
+  }
+
+  const titleEl = syncModal.querySelector('h2, h3, .subview-title');
+  if (titleEl) titleEl.textContent = 'Kella & Telefoni Sünk';
+
+  const bodyEl = syncModal.querySelector('.subview-body') || syncModal;
+  const savedProvider = state.settings.syncProvider || 'Samsung Health';
+
+  const providers = [
+    { id: 'Samsung Health', icon: 'watch', sub: 'Galaxy Watch & telefon' },
+    { id: 'Garmin Connect', icon: 'compass', sub: 'Garmin kellad & GPX' },
+    { id: 'Apple Health', icon: 'heart', sub: 'Apple Watch & iPhone' },
+    { id: 'Health Connect', icon: 'activity', sub: 'Google Fit & Android' },
+    { id: 'Polar / Suunto', icon: 'mountain', sub: 'Spordikellad & TCX' },
+    { id: 'Xiaomi / Zepp', icon: 'smartphone', sub: 'Mi Band & Amazfit' }
+  ];
+
+  let provHtml = '';
+  for (let i = 0; i < providers.length; i++) {
+    const p = providers[i];
+    const isAct = p.id === savedProvider ? 'active' : '';
+    provHtml +=
+      '<button type="button" class="gw-sync-prov ' + isAct + '" data-prov="' + p.id + '">' +
+        '<div class="gw-sync-pico"><i data-lucide="' + p.icon + '"></i></div>' +
+        '<div style="min-width:0;">' +
+          '<div class="gw-sync-pname">' + p.id + '</div>' +
+          '<div class="gw-sync-psub">' + p.sub + '</div>' +
+        '</div>' +
+      '</button>';
+  }
+
+  bodyEl.innerHTML = [
+    '<div class="gw-sync-wrap">',
+      '<div class="gw-sync-card">',
+        '<div class="gw-sync-head">',
+          '<span class="gw-sync-title"><i data-lucide="footprints" style="color:#ec4899;"></i> 1. Kiir-sünkroniseeri kella sammud</span>',
+          '<span class="gw-sync-badge" id="gwActiveProviderBadge">' + savedProvider + '</span>',
+        '</div>',
+        '<p class="gw-sync-desc">Vali oma kell või terviseäpp ja kanna tänane sammude seis GoWalki üle (nt enne kõndi stardiseisu ühtlustamiseks):</p>',
+        '<div class="gw-sync-mode-tabs">',
+          '<button type="button" class="gw-smode-btn active" data-smode="replace">Määra tänaseks seisuks</button>',
+          '<button type="button" class="gw-smode-btn" data-smode="add">Liida praegustele (+)</button>',
+        '</div>',
+        '<div class="gw-sync-input-row">',
+          '<input type="number" id="gwSyncStepsInput" class="gw-calc-input" min="0" max="150000" step="100" value="' + (state.today.steps || 0) + '" placeholder="Sammude arv kellal..." />',
+          '<button type="button" id="gwApplySyncStepsBtn" class="gw-sync-go-btn">Sünkroniseeri</button>',
+        '</div>',
+        '<div class="gw-sync-chips">',
+          '<button type="button" class="gw-schip" data-add="1000">+1 000</button>',
+          '<button type="button" class="gw-schip" data-add="2500">+2 500</button>',
+          '<button type="button" class="gw-schip" data-add="5000">+5 000</button>',
+          '<button type="button" class="gw-schip" data-add="10000">+10 000</button>',
+        '</div>',
+        '<div id="gwSyncFeedbackMsg" class="gw-sync-feedback"></div>',
+      '</div>',
+
+      '<div class="gw-sync-card">',
+        '<div class="gw-sync-head">',
+          '<span class="gw-sync-title"><i data-lucide="map-pin" style="color:#38bdf8;"></i> 2. Impordi kella GPS-rada või fail</span>',
+        '</div>',
+        '<p class="gw-sync-desc">Lae üles kellast või terviseäpist eksporditud treeningufail (<strong>.GPX, .TCX, .CSV, .JSON</strong>). GoWalk joonistab kella GPS-raja kaardile ja arvutab sammud ning kilomeetrid:</p>',
+        '<input type="file" id="gwHealthFileInput" accept=".gpx,.tcx,.csv,.json,.xml" style="display:none;" />',
+        '<button type="button" id="gwTriggerFileImportBtn" class="gw-file-drop-btn">',
+          '<i data-lucide="upload-cloud"></i>',
+          '<span>Vali fail telefonist (.GPX, .TCX, .CSV, .JSON)</span>',
+        '</button>',
+        '<div id="gwFileImportFeedback" class="gw-sync-feedback"></div>',
+      '</div>',
+
+      '<div class="gw-sync-card">',
+        '<div class="gw-sync-head">',
+          '<span class="gw-sync-title"><i data-lucide="watch" style="color:#a855f7;"></i> 3. Sinu ühendatud platvorm</span>',
+        '</div>',
+        '<div class="gw-sync-grid">' + provHtml + '</div>',
+      '</div>',
+    '</div>'
+  ].join('');
+
+  let syncMode = 'replace';
+
+  bodyEl.addEventListener('click', function (e) {
+    const modeBtn = e.target.closest('.gw-smode-btn');
+    if (modeBtn) {
+      syncMode = modeBtn.getAttribute('data-smode') || 'replace';
+      const allM = bodyEl.querySelectorAll('.gw-smode-btn');
+      for (let i = 0; i < allM.length; i++) allM[i].classList.remove('active');
+      modeBtn.classList.add('active');
+      const inp = document.getElementById('gwSyncStepsInput');
+      if (inp) {
+        inp.value = syncMode === 'replace' ? String(state.today.steps || 0) : '1000';
+      }
+      return;
+    }
+
+    const chip = e.target.closest('.gw-schip');
+    if (chip) {
+      const addVal = parseInt(chip.getAttribute('data-add'), 10) || 0;
+      const inp = document.getElementById('gwSyncStepsInput');
+      if (inp) {
+        const cur = Math.max(0, parseInt(inp.value, 10) || 0);
+        inp.value = String(cur + addVal);
+      }
+      return;
+    }
+
+    const provBtn = e.target.closest('.gw-sync-prov');
+    if (provBtn) {
+      const chosen = provBtn.getAttribute('data-prov') || 'Samsung Health';
+      state.settings.syncProvider = chosen;
+      saveState();
+      const allP = bodyEl.querySelectorAll('.gw-sync-prov');
+      for (let i = 0; i < allP.length; i++) allP[i].classList.remove('active');
+      provBtn.classList.add('active');
+      const badge = document.getElementById('gwActiveProviderBadge');
+      if (badge) badge.textContent = chosen;
+      return;
+    }
+
+    if (e.target.closest('#gwApplySyncStepsBtn')) {
+      const inp = document.getElementById('gwSyncStepsInput');
+      const fb = document.getElementById('gwSyncFeedbackMsg');
+      const rawSteps = Math.max(0, parseInt(inp ? inp.value : '0', 10) || 0);
+
+      if (syncMode === 'replace') {
+        state.today.steps = rawSteps;
+      } else {
+        state.today.steps = (state.today.steps || 0) + rawSteps;
+      }
+
+      const strideM = (state.settings.strideCm || 76) / 100;
+      state.today.distanceKm = +((state.today.steps * strideM) / 1000).toFixed(2);
+      state.today.calories = Math.round(state.today.steps * 0.04);
+
+      saveState();
+      if (typeof updateHudFn === 'function') updateHudFn();
+
+      if (fb) {
+        fb.textContent =
+          '✓ Sünkroniseeritud (' +
+          (state.settings.syncProvider || 'Kell') +
+          '): täna kokku ' +
+          state.today.steps.toLocaleString('et-EE') +
+          ' sammu (' +
+          state.today.distanceKm.toFixed(2) +
+          ' km).';
+      }
+      return;
+    }
+
+    if (e.target.closest('#gwTriggerFileImportBtn')) {
+      const fileInp = document.getElementById('gwHealthFileInput');
+      if (fileInp) fileInp.click();
+    }
+  });
+
+  const fileInput = document.getElementById('gwHealthFileInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', function (ev) {
+      const file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      const fb = document.getElementById('gwFileImportFeedback');
+      if (fb) fb.textContent = 'Loen faili: ' + file.name + '...';
+
+      const reader = new FileReader();
+      reader.onload = function (loadEv) {
+        const text = String(loadEv.target.result || '');
+        const lowerName = file.name.toLowerCase();
+
+        try {
+          if (
+            lowerName.endsWith('.gpx') ||
+            lowerName.endsWith('.tcx') ||
+            lowerName.endsWith('.xml') ||
+            text.indexOf('<gpx') !== -1 ||
+            text.indexOf('<TrainingCenterDatabase') !== -1
+          ) {
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(text, 'text/xml');
+            const coords = [];
+            let firstTimeMs = 0;
+            let lastTimeMs = 0;
+
+            const trkpts = xml.querySelectorAll('trkpt, rtept');
+            if (trkpts.length > 0) {
+              for (let i = 0; i < trkpts.length; i++) {
+                const lat = parseFloat(trkpts[i].getAttribute('lat'));
+                const lon = parseFloat(trkpts[i].getAttribute('lon'));
+                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  coords.push([lat, lon]);
+                }
+                const tEl = trkpts[i].querySelector('time');
+                if (tEl && tEl.textContent) {
+                  const tMs = Date.parse(tEl.textContent.trim());
+                  if (!Number.isNaN(tMs)) {
+                    if (!firstTimeMs) firstTimeMs = tMs;
+                    lastTimeMs = tMs;
+                  }
+                }
+              }
+            } else {
+              const tcxPts = xml.querySelectorAll('Trackpoint');
+              for (let i = 0; i < tcxPts.length; i++) {
+                const latEl = tcxPts[i].querySelector('LatitudeDegrees');
+                const lonEl = tcxPts[i].querySelector('LongitudeDegrees');
+                if (latEl && lonEl) {
+                  const lat = parseFloat(latEl.textContent);
+                  const lon = parseFloat(lonEl.textContent);
+                  if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                    coords.push([lat, lon]);
+                  }
+                }
+                const tEl = tcxPts[i].querySelector('Time');
+                if (tEl && tEl.textContent) {
+                  const tMs = Date.parse(tEl.textContent.trim());
+                  if (!Number.isNaN(tMs)) {
+                    if (!firstTimeMs) firstTimeMs = tMs;
+                    lastTimeMs = tMs;
+                  }
+                }
+              }
+            }
+
+            if (coords.length < 2) {
+              if (fb) fb.textContent = 'Failist ei leitud GPS-teekonna punkte.';
+              return;
+            }
+
+            const distMeters = calculateCoordsArrayDistanceMeters(coords);
+            const strideM = (state.settings.strideCm || 76) / 100;
+            const calcSteps = Math.round(distMeters / strideM);
+            const durSec =
+              lastTimeMs > firstTimeMs ? Math.round((lastTimeMs - firstTimeMs) / 1000) : 0;
+
+            state.today.walkTrack = coords;
+            if (calcSteps > 0) {
+              state.today.steps = Math.max(state.today.steps || 0, calcSteps);
+            }
+            if (durSec > 0) {
+              state.today.durationSec = Math.max(state.today.durationSec || 0, durSec);
+            }
+
+            restoreWalkedTrack(coords);
+            if (map && window.L) {
+              const bounds = L.latLngBounds(
+                coords.map(function (c) {
+                  return L.latLng(c[0], c[1]);
+                })
+              );
+              map.fitBounds(bounds, { padding: [48, 48] });
+            }
+
+            saveState();
+            if (typeof updateHudFn === 'function') updateHudFn();
+
+            if (fb) {
+              fb.textContent =
+                '✓ Kella GPS-rada imporditud: ' +
+                (distMeters / 1000).toFixed(2) +
+                ' km (' +
+                coords.length +
+                ' punkti, ~' +
+                calcSteps.toLocaleString('et-EE') +
+                ' sammu)!';
+            }
+            return;
+          }
+
+          if (lowerName.endsWith('.json') || text.trim().startsWith('{')) {
+            const parsed = JSON.parse(text);
+            if (parsed.today && typeof parsed.today.steps === 'number') {
+              state.today.steps = Math.max(state.today.steps || 0, parsed.today.steps);
+              if (Array.isArray(parsed.today.walkTrack) && parsed.today.walkTrack.length > 0) {
+                state.today.walkTrack = parsed.today.walkTrack;
+                restoreWalkedTrack(parsed.today.walkTrack);
+              }
+            }
+            if (Array.isArray(parsed.history)) {
+              state.history = parsed.history.concat(state.history || []);
+            }
+            saveState();
+            if (typeof updateHudFn === 'function') updateHudFn();
+            if (fb) fb.textContent = '✓ JSON terviseandmed edukalt imporditud!';
+            return;
+          }
+
+          const lines = text.split(/\r?\n/).filter(function (l) {
+            return l.trim().length > 0;
+          });
+          let importedSteps = 0;
+          for (let i = 0; i < lines.length; i++) {
+            const nums = lines[i].match(/\b(\d{3,6})\b/g);
+            if (nums) {
+              for (let j = 0; j < nums.length; j++) {
+                const n = parseInt(nums[j], 10);
+                if (n >= 200 && n <= 95000 && n !== 2025 && n !== 2026) {
+                  importedSteps = Math.max(importedSteps, n);
+                }
+              }
+            }
+          }
+
+          if (importedSteps > 0) {
+            state.today.steps = Math.max(state.today.steps || 0, importedSteps);
+            saveState();
+            if (typeof updateHudFn === 'function') updateHudFn();
+            if (fb) {
+              fb.textContent =
+                '✓ CSV failist imporditud ' + importedSteps.toLocaleString('et-EE') + ' sammu!';
+            }
+          } else {
+            if (fb) fb.textContent = 'Failist ei leitud sammude numbreid.';
+          }
+        } catch (err) {
+          if (fb) fb.textContent = 'Faili lugemine ebaõnnestus. Kontrolli formaati.';
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  const quickSyncBtn = document.getElementById('quickSyncBtn');
+  if (quickSyncBtn) {
+    quickSyncBtn.style.display = 'inline-flex';
+    quickSyncBtn.onclick = function () {
+      closeAllModalsAndGoHomeFn();
+      const inp = document.getElementById('gwSyncStepsInput');
+      if (inp) inp.value = String(state.today.steps || 0);
+      syncModal.classList.add('open');
+      if (window.lucide) window.lucide.createIcons();
+    };
+  }
 }
 
 function setupCustomMapStylePicker() {
@@ -860,11 +1232,14 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       ':root, html { color-scheme: only dark !important; }',
       'body, .app-shell, .subview-modal, .sidebar-drawer, .modal-content, .dial-modal-card { background: radial-gradient(circle at 50% 10%, #1e1b4b 0%, #0f1429 65%, #090d1a 100%) !important; color: #f8fafc !important; }',
       '#generatorModal { display: none !important; visibility: hidden !important; pointer-events: none !important; }',
+      'html body .nav-item[data-target="syncModal"] { display: flex !important; }',
+      'html body #syncModal.subview-modal { display: none !important; }',
+      'html body #syncModal.subview-modal.open { display: flex !important; }',
       '.subview-modal { padding-bottom: 76px !important; }',
       '.close-subview, .close-modal-btn, #closeDialBtn { border-radius: 50% !important; background: rgba(30, 41, 59, 0.78) !important; border: 1px solid rgba(168, 85, 247, 0.35) !important; color: #fff !important; }',
       '.hud-card, .bottom-hud, #bottomHud { background: linear-gradient(165deg, rgba(25, 30, 64, 0.94) 0%, rgba(14, 18, 38, 0.98) 100%) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55) !important; bottom: 74px !important; border-radius: 24px !important; }',
       '.hud-action-row { display: flex !important; gap: 10px !important; align-items: center !important; width: 100% !important; }',
-      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
+      '#startWalkBtn, .primary-btn, .generate-btn, .gw-rb-cta, .gw-calc-apply, .gw-sync-go-btn, #openGeneratorBtn, #applyPromoBtn, #promoApplyBtn, #settingsModal .subview-body > div:first-child button, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn, #dialSaveAndRouteBtn, [id*="dial" i] button[id*="route" i], .dial-mode-btn.active, .dial-tab.active, .map-style-pill.active, .layer-btn.active, .pro-tag { background-image: url("' + neonPng + '") !important; background-size: 100% 100% !important; border: 1px solid rgba(244, 114, 182, 0.52) !important; color: #ffffff !important; font-weight: 700 !important; box-shadow: 0 6px 20px rgba(217, 70, 239, 0.44) !important; }',
       '#startWalkBtn, .gw-rb-cta, .gw-calc-apply, #triggerInstallBtn, #triggerPwaInstallBtn, #saveAndRouteDialBtn { border-radius: 999px !important; }',
       '#startWalkBtn.walking-active { background-image: url("' + redPng + '") !important; border-color: rgba(251, 113, 133, 0.65) !important; box-shadow: 0 6px 20px rgba(225, 29, 72, 0.45) !important; font-size: 14px !important; }',
       '#pauseWalkBtn { height: 48px !important; padding: 0 18px !important; border-radius: 999px !important; background: rgba(28, 34, 72, 0.95) !important; border: 1px solid rgba(251, 191, 36, 0.55) !important; color: #fbbf24 !important; font-family: var(--font-display) !important; font-size: 14px !important; font-weight: 800 !important; display: none; align-items: center !important; justify-content: center !important; gap: 7px !important; cursor: pointer !important; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45) !important; flex-shrink: 0 !important; white-space: nowrap !important; transition: transform 0.15s ease, box-shadow 0.2s ease !important; }',
@@ -873,6 +1248,31 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
       '#pauseWalkBtn.paused-active { background-image: url("' + greenPng + '") !important; background-size: 100% 100% !important; border-color: rgba(110, 231, 183, 0.7) !important; color: #ffffff !important; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45) !important; }',
       '#pauseWalkBtn svg { width: 17px !important; height: 17px !important; stroke-width: 2.5px !important; }',
       '#liveDuration.paused-blink { color: #fbbf24 !important; }',
+      '.gw-sync-wrap { display: flex; flex-direction: column; gap: 14px; padding-bottom: 84px; }',
+      '.gw-sync-card { background: linear-gradient(160deg, rgba(28, 34, 74, 0.92), rgba(15, 20, 42, 0.96)); border: 1px solid rgba(168, 85, 247, 0.32); border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 11px; box-shadow: 0 10px 26px rgba(0,0,0,0.35); }',
+      '.gw-sync-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }',
+      '.gw-sync-title { font-size: 0.95rem; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }',
+      '.gw-sync-title svg { width: 18px; height: 18px; }',
+      '.gw-sync-badge { font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: rgba(236, 72, 153, 0.18); border: 1px solid rgba(236, 72, 153, 0.45); color: #f472b6; }',
+      '.gw-sync-desc { font-size: 0.78rem; color: #cbd5e1; line-height: 1.4; margin: 0; }',
+      '.gw-sync-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(11, 15, 34, 0.9); padding: 4px; border-radius: 13px; border: 1px solid rgba(168, 85, 247, 0.25); }',
+      '.gw-smode-btn { background: transparent; border: 1px solid transparent; color: #94a3b8; font: 700 0.75rem inherit; padding: 8px 6px; border-radius: 9px; cursor: pointer; }',
+      '.gw-smode-btn.active { background: rgba(168, 85, 247, 0.28); border-color: #ec4899; color: #fff; }',
+      '.gw-sync-input-row { display: flex; gap: 8px; }',
+      '.gw-sync-go-btn { padding: 0 16px; border-radius: 12px; font: 800 0.84rem inherit; cursor: pointer; white-space: nowrap; }',
+      '.gw-sync-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }',
+      '.gw-schip { background: rgba(20, 26, 56, 0.9); border: 1px solid rgba(168, 85, 247, 0.3); color: #e2e8f0; border-radius: 10px; padding: 7px 4px; font: 700 0.74rem inherit; cursor: pointer; }',
+      '.gw-schip:active { transform: scale(0.96); border-color: #ec4899; }',
+      '.gw-sync-feedback { font-size: 0.76rem; font-weight: 700; color: #38bdf8; min-height: 4px; line-height: 1.35; }',
+      '.gw-file-drop-btn { width: 100%; padding: 14px; border-radius: 16px; background: rgba(14, 20, 44, 0.92); border: 1px dashed rgba(56, 189, 248, 0.65); color: #38bdf8; font: 700 0.82rem inherit; display: flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; }',
+      '.gw-file-drop-btn svg { width: 19px; height: 19px; flex-shrink: 0; }',
+      '.gw-sync-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }',
+      '.gw-sync-prov { display: flex; align-items: center; gap: 9px; background: rgba(16, 21, 46, 0.9); border: 1px solid rgba(168, 85, 247, 0.24); border-radius: 14px; padding: 10px; color: #e2e8f0; text-align: left; cursor: pointer; }',
+      '.gw-sync-prov.active { background: rgba(124, 58, 237, 0.28); border-color: #ec4899; box-shadow: 0 0 14px rgba(236, 72, 153, 0.3); }',
+      '.gw-sync-pico { width: 32px; height: 32px; border-radius: 9px; background: rgba(236, 72, 153, 0.15); color: #f472b6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }',
+      '.gw-sync-pico svg { width: 16px; height: 16px; }',
+      '.gw-sync-pname { font-size: 0.78rem; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.gw-sync-psub { font-size: 0.65rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
       '#saveStepsOnlyBtn, #dialSaveOnlyBtn { background: rgba(22, 27, 58, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
       '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 3500; padding: 4px 8px; }',
@@ -922,12 +1322,12 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
           '<p style="margin-top:4px;font-size:12px;color:#cbd5e1;"><strong>Nipp:</strong> Täpseima siseruumi GPS-i jaoks hoia telefonis sees <em>Täpne asukoht (Precise Location)</em> ja Wi-Fi otsing.</p>',
         '</div>',
         '<div class="help-card">',
-          '<h4><i data-lucide="sparkles"></i> Loo jalutusring & Teine suund</h4>',
-          '<p>Ava alumiselt ribalt <strong>Marsruudid</strong> (või vajuta kaardil sädelevale nupule), vali soovitud sammud, aeg või marsruudi tüüp ning GoWalk joonistab sulle alguspunktist (Pin A) täpse ringi. Suuna muutmiseks vajuta kaardil <strong>Teine suund</strong>.</p>',
+          '<h4><i data-lucide="watch"></i> Kella & Telefoni Sünkroniseerimine</h4>',
+          '<p>Ava külgmenüüst <strong>Kella & Telefoni Sünk</strong>, et sünkroniseerida oma kella sammud või laadida üles kellast eksporditud <strong>.GPX / .TCX</strong> treeningufail koos GPS-rajaga.</p>',
         '</div>',
         '<div class="help-card">',
           '<h4><i data-lucide="footprints"></i> 360° Sammuketas & Kõnni salvestamine</h4>',
-          '<p>Puuduta avalehel oma sammude arvu või protsendirõngast, et avada <strong>360° sammuketas</strong> – sealt saad muuta päeva eesmärki, lisada tehtud samme ja koostada puuduvate sammude jagu jalutusringi.</p>',
+          '<p>Puuduta avalehel oma sammude arvu või protsendirõngast, et avada <strong>360° sammuketas</strong> – või vajuta otse <strong>Alusta kõndimist</strong>, et salvestada vaba kõnd koos GPS-rajaga.</p>',
         '</div>'
       ].join('');
     }
@@ -1093,12 +1493,20 @@ function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, openSet
 }
 
 function bootGoWalkApp() {
-  const syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
-  if (syncNavBtn) syncNavBtn.remove();
-  const syncModalEl = document.getElementById('syncModal');
-  if (syncModalEl) syncModalEl.remove();
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
+
+  const navList = document.querySelector('.drawer-nav, .sidebar-nav, #sidebarDrawer nav');
+  let syncNavBtn = document.querySelector('.nav-item[data-target="syncModal"]');
+  if (!syncNavBtn && navList) {
+    syncNavBtn = document.createElement('button');
+    syncNavBtn.className = 'nav-item';
+    syncNavBtn.setAttribute('data-target', 'syncModal');
+    syncNavBtn.innerHTML = '<i data-lucide="watch"></i><span>Kella & Telefoni Sünk</span>';
+    navList.appendChild(syncNavBtn);
+  } else if (syncNavBtn) {
+    syncNavBtn.innerHTML = '<i data-lucide="watch"></i><span>Kella & Telefoni Sünk</span>';
+  }
 
   const oldGenModal = document.getElementById('generatorModal');
   if (oldGenModal) {
@@ -1192,8 +1600,6 @@ function bootGoWalkApp() {
   const drawerOverlay = document.getElementById('drawerOverlay');
   const openDrawerBtn = document.getElementById('openDrawerBtn');
   const closeDrawerBtn = document.getElementById('closeDrawerBtn');
-  const navItems = document.querySelectorAll('.nav-item');
-  const subviewModals = document.querySelectorAll('.subview-modal');
 
   function setBottomNavActive(key) {
     const nav = document.getElementById('gwBottomNavbar');
@@ -1220,6 +1626,7 @@ function bootGoWalkApp() {
 
   function closeAllModalsAndGoHome() {
     closeDrawer();
+    const subviewModals = document.querySelectorAll('.subview-modal');
     for (let i = 0; i < subviewModals.length; i++) {
       subviewModals[i].classList.remove('open');
     }
@@ -1231,6 +1638,7 @@ function bootGoWalkApp() {
 
   function openRouteBuilderView() {
     closeDrawer();
+    const subviewModals = document.querySelectorAll('.subview-modal');
     for (let i = 0; i < subviewModals.length; i++) {
       subviewModals[i].classList.remove('open');
     }
@@ -1278,51 +1686,6 @@ function bootGoWalkApp() {
       if (window.lucide) window.lucide.createIcons();
     }
   }
-
-  for (let i = 0; i < navItems.length; i++) {
-    navItems[i].addEventListener('click', function () {
-      const targetId = this.getAttribute('data-target');
-      for (let j = 0; j < navItems.length; j++) navItems[j].classList.remove('active');
-      this.classList.add('active');
-      closeDrawer();
-
-      for (let k = 0; k < subviewModals.length; k++) subviewModals[k].classList.remove('open');
-
-      if (targetId === 'statsModal') {
-        openStatsView();
-      } else if (targetId === 'settingsModal') {
-        openSettingsView();
-      } else if (targetId !== 'home') {
-        const modal = document.getElementById(targetId);
-        if (modal) {
-          if (targetId === 'adminModal') loadAdminDashboard();
-          modal.classList.add('open');
-        }
-      } else {
-        closeAllModalsAndGoHome();
-      }
-    });
-  }
-
-  const closeBtns = document.querySelectorAll('.close-subview');
-  for (let i = 0; i < closeBtns.length; i++) {
-    closeBtns[i].addEventListener('click', function () {
-      closeAllModalsAndGoHome();
-    });
-  }
-
-  document.addEventListener(
-    'click',
-    function (e) {
-      const genBtn = e.target.closest('#openGeneratorBtn, [data-target="generatorModal"]');
-      if (genBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        openRouteBuilderView();
-      }
-    },
-    true
-  );
 
   // ==========================================================================
   // ALUMINE HUD, PAUS / JÄTKA & TÄPNE SAMMULOENDUR (6-SAMMU PUHVER + GPS FILTER)
@@ -1406,6 +1769,60 @@ function bootGoWalkApp() {
       durEl.classList.toggle('paused-blink', Boolean(isWalking && isPaused));
     }
   }
+
+  setupWatchAndPhoneSyncModal(updateHudUI, closeAllModalsAndGoHome);
+
+  const navItems = document.querySelectorAll('.nav-item');
+  for (let i = 0; i < navItems.length; i++) {
+    navItems[i].addEventListener('click', function () {
+      const targetId = this.getAttribute('data-target');
+      for (let j = 0; j < navItems.length; j++) navItems[j].classList.remove('active');
+      this.classList.add('active');
+      closeDrawer();
+
+      const subviewModals = document.querySelectorAll('.subview-modal');
+      for (let k = 0; k < subviewModals.length; k++) subviewModals[k].classList.remove('open');
+
+      if (targetId === 'statsModal') {
+        openStatsView();
+      } else if (targetId === 'settingsModal') {
+        openSettingsView();
+      } else if (targetId !== 'home') {
+        const modal = document.getElementById(targetId);
+        if (modal) {
+          if (targetId === 'adminModal') loadAdminDashboard();
+          if (targetId === 'syncModal') {
+            const inp = document.getElementById('gwSyncStepsInput');
+            if (inp) inp.value = String(state.today.steps || 0);
+          }
+          modal.classList.add('open');
+          if (window.lucide) window.lucide.createIcons();
+        }
+      } else {
+        closeAllModalsAndGoHome();
+      }
+    });
+  }
+
+  const closeBtns = document.querySelectorAll('.close-subview');
+  for (let i = 0; i < closeBtns.length; i++) {
+    closeBtns[i].addEventListener('click', function () {
+      closeAllModalsAndGoHome();
+    });
+  }
+
+  document.addEventListener(
+    'click',
+    function (e) {
+      const genBtn = e.target.closest('#openGeneratorBtn, [data-target="generatorModal"]');
+      if (genBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        openRouteBuilderView();
+      }
+    },
+    true
+  );
 
   async function requestPocketWakeLock() {
     if ('wakeLock' in navigator) {
@@ -1646,7 +2063,6 @@ function bootGoWalkApp() {
       if (!isWalking) return;
 
       if (!isPaused) {
-        // Lülitame kõnni pausile
         syncWalkElapsedTime();
         isPaused = true;
         lastTimerCheckMs = 0;
@@ -1656,7 +2072,6 @@ function bootGoWalkApp() {
         isCadenceActive = false;
         if (startWalkText) startWalkText.textContent = 'Lõpeta ja salvesta';
       } else {
-        // Jätkame kõndi pausilt
         isPaused = false;
         lastTimerCheckMs = Date.now();
         lastGpsLatLng = null;
