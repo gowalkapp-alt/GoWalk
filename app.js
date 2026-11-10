@@ -32,12 +32,13 @@ import { setupProfileAndAuthModals } from './features/profile-auth.js';
 import { applyMidnightIndigoThemeAndNav } from './features/theme-nav.js';
 import { setupHealthSync } from './features/health.js';
 import { setupNativeMode } from './features/native-mode.js';
-import { setupSimpleHome } from './features/simple-home.js';
+import { setupSimpleHome, setupSimpleSettings } from './features/simple-home.js';
 
 
 function bootGoWalkApp() {
   setupNativeMode();
   setupSimpleHome();
+  setupSimpleSettings();
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
 

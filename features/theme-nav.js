@@ -76,7 +76,7 @@ export function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, 
       '.gw-sync-psub { font-size: 0.65rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.dial-step-btn, .quick-step-btn { background: rgba(26, 31, 66, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.36) !important; color: #fff !important; border-radius: 14px !important; font-weight: 700 !important; }',
       '#saveStepsOnlyBtn, #dialSaveOnlyBtn { background: rgba(22, 27, 58, 0.92) !important; border: 1px solid rgba(168, 85, 247, 0.34) !important; color: #e2e8f0 !important; border-radius: 999px !important; }',
-      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 3500; padding: 4px 8px; }',
+      '.gw-bottom-navbar { position: fixed; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(12, 16, 34, 0.96); backdrop-filter: blur(16px); border-top: 1px solid rgba(168, 85, 247, 0.26); display: grid; grid-template-columns: repeat(3, 1fr); z-index: 3500; padding: 4px 8px; }',
       '.gw-bnav-btn { background: transparent; border: none; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font: 600 0.72rem inherit; cursor: pointer; transition: 0.2s; }',
       '.gw-bnav-btn svg { width: 20px; height: 20px; }',
       '.gw-bnav-btn.active { color: #ec4899 !important; }',
@@ -124,7 +124,7 @@ export function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, 
         '</div>',
         '<div class="help-card">',
           '<h4><i data-lucide="watch"></i> Kella & Telefoni Sünkroniseerimine</h4>',
-          '<p>Ava külgmenüüst <strong>Kella & Telefoni Sünk</strong>, et sünkroniseerida oma kella sammud või laadida üles kellast eksporditud <strong>.GPX / .TCX</strong> treeningufail koos GPS-rajaga.</p>',
+          '<p>Ava <strong>Seaded → Sammud ja import</strong>, et sisestada sammud käsitsi või laadida üles kellast eksporditud <strong>.GPX / .TCX</strong> treeningufail koos GPS-rajaga.</p>',
         '</div>',
         '<div class="help-card">',
           '<h4><i data-lucide="footprints"></i> 360° Sammuketas & Kõnni salvestamine</h4>',
@@ -267,8 +267,7 @@ export function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, 
     nav.className = 'gw-bottom-navbar';
     nav.innerHTML = [
       '<button type="button" class="gw-bnav-btn active" data-bnav="home"><i data-lucide="home"></i><span>Avaleht</span></button>',
-      '<button type="button" class="gw-bnav-btn" data-bnav="routes"><i data-lucide="route"></i><span>Marsruudid</span></button>',
-      '<button type="button" class="gw-bnav-btn" data-bnav="stats"><i data-lucide="bar-chart-2"></i><span>Statistika</span></button>',
+      '<button type="button" class="gw-bnav-btn" data-bnav="stats"><i data-lucide="bar-chart-2"></i><span>Ajalugu</span></button>',
       '<button type="button" class="gw-bnav-btn" data-bnav="settings"><i data-lucide="settings"></i><span>Seaded</span></button>'
     ].join('');
     document.body.appendChild(nav);

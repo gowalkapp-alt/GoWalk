@@ -41,3 +41,73 @@ export function setupSimpleHome() {
     tools.classList.toggle('has-route', count > 1);
   });
 }
+
+/* ==========================================================================
+   LIHTSAM MENÜÜ: külgmenüü kaob, kõik asub ühes kohas — Seadetes.
+   Olemasolevad elemendid (profiil, sisselogimine, menüüpunktid) TÕSTETAKSE
+   ümber, mitte ei looda uuesti, nii et nende sündmuskuulajad jäävad alles.
+   ========================================================================== */
+
+export function setupSimpleSettings() {
+  const body = document.querySelector('#settingsModal .subview-body');
+  const drawer = document.getElementById('sidebarDrawer');
+  if (!body || !drawer || body.dataset.simplified) return;
+  body.dataset.simplified = '1';
+
+  const style = document.createElement('style');
+  style.id = 'gw-simple-settings-style';
+  style.textContent = [
+    '#sidebarDrawer, #drawerOverlay, #openDrawerBtn, #closeDrawerBtn { display: none !important; }',
+    '.floating-topbar { justify-content: center; }',
+    '#quickSyncBtn { display: none !important; }',
+    '.gw-account-block { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }',
+    '.gw-account-block .drawer-profile { padding: 0; border: 0; background: none; }',
+    '.gw-more-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 18px; }',
+    '.gw-more-list .nav-item { width: 100%; }',
+    '.gw-settings-footer { margin-top: 20px; padding-bottom: 12px; }'
+  ].join('\n');
+  document.head.appendChild(style);
+
+  // Päis: ainult pealkiri
+  const title = document.querySelector('#settingsModal .subview-title-group h2');
+  if (title) title.textContent = 'Seaded';
+
+  // 1) Konto (profiil + sisselogimine) lehe algusesse
+  const account = document.createElement('div');
+  account.className = 'gw-account-block';
+  const profile = drawer.querySelector('.drawer-profile');
+  const auth = drawer.querySelector('.drawer-auth-bar');
+  if (profile) account.appendChild(profile);
+  if (auth) account.appendChild(auth);
+  body.prepend(account);
+
+  // 2) Sooduskood eesmärgi ja sammupikkuse alla
+  const promo = body.querySelector('.promo-redeem-box');
+  const firstGroup = body.querySelector('.settings-group');
+  if (promo && firstGroup) firstGroup.insertAdjacentElement('afterend', promo);
+
+  // 3) Kaardistiili vaikeväärtus on avalehel ikooni taga; siin seda enam ei näita
+  const styleSel = document.getElementById('settingMapStyle');
+  const styleItem = styleSel && styleSel.closest('.setting-item');
+  if (styleItem) styleItem.style.display = 'none';
+
+  // 4) Menüüpunktid (Sammud ja import, Paigalda äpp, Abi, Admin) "Rohkem" lõiku
+  const items = Array.from(drawer.querySelectorAll('.drawer-nav .nav-item'));
+  if (items.length) {
+    const more = document.createElement('div');
+    more.className = 'gw-more-list';
+    items.forEach(it => more.appendChild(it));
+    const exportHeading = Array.from(body.querySelectorAll('.section-subtitle')).pop();
+    if (exportHeading) exportHeading.insertAdjacentElement('beforebegin', more);
+    else body.appendChild(more);
+  }
+
+  // 5) Versioon ja andmekaitse rida lõppu
+  const footer = drawer.querySelector('.drawer-footer');
+  if (footer) {
+    footer.classList.add('gw-settings-footer');
+    body.appendChild(footer);
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}

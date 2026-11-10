@@ -34,7 +34,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `features/profile-auth.js` | profiili- ja sisselogimismodaalid |
 | `features/theme-nav.js` | Midnight Indigo teema ja alumine navigatsioon |
 | `features/native-mode.js` | tuvastab natiivse äpi, lisab `is-native` klassi ja peidab veebi-spetsiifilised menüüd (nt "Paigalda äpp") |
-| `features/simple-home.js` | avalehe lihtsustus: kaardistiili ikoon, tagasivõtmise/puhastuse nupud ainult raja olemasolul |
+| `features/simple-home.js` | avalehe ja seadete lihtsustus: kaardistiili ikoon, tagasivõtmise/puhastuse nupud ainult raja olemasolul, külgmenüü sisu Seadetesse |
 | `features/health.js` | päeva sammud telefonist (Health Connect / Apple Health), nupp "Võta sammud telefonist"; veebis ei tee midagi |
 
 ## Reeglid
@@ -52,7 +52,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - [x] Sammude lugemine Health Connectist (`features/health.js`), testimata päris telefonis
 - [x] UI lihtsustus samm 1: külgmenüü 3 punkti, "Sammud ja import" (käsitsi + failiimport), sammude allikas natiivis automaatne
 - [x] UI lihtsustus samm 2 (avaleht): "Tee mulle rada" nupp, stiilid ikooni taga
-- [ ] UI lihtsustus samm 3 (alumine navigatsioon 3 sakki, seaded)
+- [x] UI lihtsustus samm 3: alumine menüü 3 sakki (Avaleht / Ajalugu / Seaded), külgmenüü peidetud, profiil, menüüpunktid ja versioon asuvad Seadetes (`setupSimpleSettings` tõstab olemasolevad elemendid ümber)
 - [ ] Marsruudi kvaliteet puuduvate sammude põhjal
 - [ ] iOS (Apple Health)
 - [ ] Taustal asukoha jälgimine natiivse pluginaga (`navigator.geolocation` ei tööta taustal)
@@ -60,3 +60,5 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 ## Teadaolevad pisiasjad
 
 - `favicon.jpg` viitab olematule failile (repos on `favicon.png`) → 404.
+
+- `gwRouteBuilderModal` (Marsruudid-vaade, `theme-nav.js`) pole enam menüüst ligipääsetav; raja pikkust ja tüüpi muudab ✨ nupp avalehel. Kustuta, kui pole vaja.
