@@ -258,6 +258,24 @@ function updateFloatingShuffleLabel() {
   `;
 }
 
+// Hoiab "Rada / Teine suund" nupu alati alumise paneeli kohal,
+// ka siis kui paneel kõndimise ajal kõrgemaks läheb (Paus nupp jms).
+function keepShufflePillAboveHud(viewport) {
+  const hud = document.querySelector('.bottom-hud');
+  if (!hud || !floatingShuffleBtn) return;
+  const GAP = 10;
+  const reposition = () => {
+    const vpRect = viewport.getBoundingClientRect();
+    const hudRect = hud.getBoundingClientRect();
+    const bottom = Math.max(0, vpRect.bottom - hudRect.top + GAP);
+    floatingShuffleBtn.style.bottom = `${Math.round(bottom)}px`;
+  };
+  reposition();
+  if (window.ResizeObserver) new ResizeObserver(reposition).observe(hud);
+  window.addEventListener('resize', reposition);
+  document.addEventListener('click', () => requestAnimationFrame(reposition), true);
+}
+
 function setFloatingShuffleVisible(visible) {
   if (floatingShuffleBtn) {
     updateFloatingShuffleLabel();
@@ -347,6 +365,7 @@ function setupRouteGeneratorUI() {
   floatingShuffleBtn.className = 'floating-shuffle-pill';
   updateFloatingShuffleLabel();
   viewport.appendChild(floatingShuffleBtn);
+  keepShufflePillAboveHud(viewport);
 
   const isSafeDefault = state.settings.safeLitOnly !== false;
   const initialMissing = getMissingSteps() || 3000;
