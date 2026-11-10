@@ -16,6 +16,7 @@ import {
   switchMapLayer,
   invalidateMapSize,
   generateLoopRouteForSteps,
+  refreshRouteHint,
   appendWalkedTrackPoint,
   getWalkedTrackGeoJson
 } from './map.js';
@@ -31,10 +32,12 @@ import { setupProfileAndAuthModals } from './features/profile-auth.js';
 import { applyMidnightIndigoThemeAndNav } from './features/theme-nav.js';
 import { setupHealthSync } from './features/health.js';
 import { setupNativeMode } from './features/native-mode.js';
+import { setupSimpleHome } from './features/simple-home.js';
 
 
 function bootGoWalkApp() {
   setupNativeMode();
+  setupSimpleHome();
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
 
@@ -288,6 +291,8 @@ function bootGoWalkApp() {
         hintBadge.textContent = missing > 0 ? 'Puudu ' + missing.toLocaleString('et-EE') : 'Täidetud ✓';
       }
     }
+
+    refreshRouteHint();
 
     const pctEl = document.getElementById('stepPercentText');
     if (pctEl) pctEl.textContent = pct + '%';

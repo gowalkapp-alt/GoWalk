@@ -243,10 +243,15 @@ function updateFloatingShuffleLabel() {
   if (!floatingShuffleBtn) return;
   const isSafe = state.settings.safeLitOnly !== false;
   const modeSvg = isSafe ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
-  const routeText =
-    plannedRoute.steps > 0
-      ? `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`
-      : 'Valitud rada';
+  if (plannedRoute.steps === 0) {
+    const missing = getMissingSteps();
+    floatingShuffleBtn.innerHTML = `
+    <span class="shuffle-mode-icon">${LUCIDE_SVGS.sparkles}</span>
+    <span>Tee mulle rada${missing >= 300 ? ' (' + missing.toLocaleString('et-EE') + ' sammu)' : ''}</span>
+  `;
+    return;
+  }
+  const routeText = `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`;
 
   floatingShuffleBtn.innerHTML = `
     <span class="shuffle-mode-icon">${modeSvg}</span>
@@ -279,8 +284,15 @@ function keepShufflePillAboveHud(viewport) {
 function setFloatingShuffleVisible(visible) {
   if (floatingShuffleBtn) {
     updateFloatingShuffleLabel();
-    floatingShuffleBtn.classList.toggle('visible', visible);
+    // Kui rada pole, näitame nuppu "Tee mulle rada", kui samme on puudu.
+    const hint = plannedRoute.steps === 0 && getMissingSteps() >= 300;
+    floatingShuffleBtn.classList.toggle('visible', visible || hint);
   }
+}
+
+// Avaleht kutsub seda, kui sammud muutuvad (nupu tekst ja nähtavus).
+export function refreshRouteHint() {
+  setFloatingShuffleVisible(plannedRoute.steps > 0);
 }
 
 function createPinIcon(label, isStart = false) {
@@ -347,6 +359,7 @@ function rebuildWaypoints(customGeometry = null, skipMetricRecalc = false) {
   if (!skipMetricRecalc) {
     recalculateRouteMetrics();
   }
+  document.dispatchEvent(new CustomEvent('gw:route-changed', { detail: { count: waypoints.length } }));
 }
 
 function setupRouteGeneratorUI() {
@@ -485,9 +498,10 @@ function setupRouteGeneratorUI() {
 
   floatingShuffleBtn.addEventListener('click', () => {
     const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
-    const targetSteps = lastTargetSteps || fallback;
+    const targetSteps = plannedRoute.steps === 0 ? fallback : lastTargetSteps || fallback;
     generateLoopRouteForSteps(targetSteps, lastRouteType, lastStopsCount);
   });
+  setFloatingShuffleVisible(false);
 }
 
 function offsetCoordinate(originLatLng, distanceMeters, bearingRad) {
