@@ -30,9 +30,11 @@ import { setupStrideCalculator } from './features/stride-calculator.js';
 import { setupProfileAndAuthModals } from './features/profile-auth.js';
 import { applyMidnightIndigoThemeAndNav } from './features/theme-nav.js';
 import { setupHealthSync } from './features/health.js';
+import { setupNativeMode } from './features/native-mode.js';
 
 
 function bootGoWalkApp() {
+  setupNativeMode();
   const quickAddBtn = document.getElementById('quickAddStepsBtn');
   if (quickAddBtn) quickAddBtn.remove();
 
@@ -42,10 +44,10 @@ function bootGoWalkApp() {
     syncNavBtn = document.createElement('button');
     syncNavBtn.className = 'nav-item';
     syncNavBtn.setAttribute('data-target', 'syncModal');
-    syncNavBtn.innerHTML = '<i data-lucide="watch"></i><span>Kella & Telefoni Sünk</span>';
+    syncNavBtn.innerHTML = '<span class="nav-icon"><i data-lucide="watch"></i></span><div class="nav-text"><span class="nav-title">Sammud ja import</span><span class="nav-sub">Käsitsi sisestus, kellafail (GPX/TCX)</span></div><i data-lucide="chevron-right" class="nav-arrow"></i>';
     navList.appendChild(syncNavBtn);
   } else if (syncNavBtn) {
-    syncNavBtn.innerHTML = '<i data-lucide="watch"></i><span>Kella & Telefoni Sünk</span>';
+    syncNavBtn.innerHTML = '<span class="nav-icon"><i data-lucide="watch"></i></span><div class="nav-text"><span class="nav-title">Sammud ja import</span><span class="nav-sub">Käsitsi sisestus, kellafail (GPX/TCX)</span></div><i data-lucide="chevron-right" class="nav-arrow"></i>';
   }
 
   const oldGenModal = document.getElementById('generatorModal');

@@ -1,4 +1,5 @@
 import { state, saveState } from '../state.js';
+import { isNativeApp } from './native-mode.js';
 import { map, restoreWalkedTrack } from '../map.js';
 
 // ==========================================================================
@@ -33,7 +34,7 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
     syncModal.className = 'subview-modal';
     syncModal.innerHTML = [
       '<header class="subview-header">',
-        '<h2>Kella & Telefoni Sünk</h2>',
+        '<h2>Sammud ja import</h2>',
         '<button class="icon-btn close-subview"><i data-lucide="x"></i></button>',
       '</header>',
       '<div class="subview-body"></div>'
@@ -43,40 +44,19 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
   }
 
   const titleEl = syncModal.querySelector('h2, h3, .subview-title');
-  if (titleEl) titleEl.textContent = 'Kella & Telefoni Sünk';
+  if (titleEl) titleEl.textContent = 'Sammud ja import';
 
   const bodyEl = syncModal.querySelector('.subview-body') || syncModal;
-  const savedProvider = state.settings.syncProvider || 'Samsung Health';
-
-  const providers = [
-    { id: 'Samsung Health', icon: 'watch', sub: 'Galaxy Watch & telefon' },
-    { id: 'Garmin Connect', icon: 'compass', sub: 'Garmin kellad & GPX' },
-    { id: 'Apple Health', icon: 'heart', sub: 'Apple Watch & iPhone' },
-    { id: 'Health Connect', icon: 'activity', sub: 'Google Fit & Android' },
-    { id: 'Polar / Suunto', icon: 'mountain', sub: 'Spordikellad & TCX' },
-    { id: 'Xiaomi / Zepp', icon: 'smartphone', sub: 'Mi Band & Amazfit' }
-  ];
-
-  let provHtml = '';
-  for (let i = 0; i < providers.length; i++) {
-    const p = providers[i];
-    const isAct = p.id === savedProvider ? 'active' : '';
-    provHtml +=
-      '<button type="button" class="gw-sync-prov ' + isAct + '" data-prov="' + p.id + '">' +
-        '<div class="gw-sync-pico"><i data-lucide="' + p.icon + '"></i></div>' +
-        '<div style="min-width:0;">' +
-          '<div class="gw-sync-pname">' + p.id + '</div>' +
-          '<div class="gw-sync-psub">' + p.sub + '</div>' +
-        '</div>' +
-      '</button>';
-  }
+  const introText = isNativeApp()
+    ? 'Sammud tulevad automaatselt telefonist (Health Connect). Siin saad neid vajadusel käsitsi parandada või kellast eksporditud faili importida.'
+    : 'Siin saad sammud käsitsi sisestada või kellast eksporditud faili importida.';
 
   bodyEl.innerHTML = [
     '<div class="gw-sync-wrap">',
+      '<p class="gw-sync-desc" style="margin:0 4px 10px;">' + introText + '</p>',
       '<div class="gw-sync-card">',
         '<div class="gw-sync-head">',
-          '<span class="gw-sync-title"><i data-lucide="footprints" style="color:#ec4899;"></i> 1. Kiir-sünkroniseeri kella sammud</span>',
-          '<span class="gw-sync-badge" id="gwActiveProviderBadge">' + savedProvider + '</span>',
+          '<span class="gw-sync-title"><i data-lucide="footprints" style="color:#ec4899;"></i> Sammud käsitsi</span>',
         '</div>',
         '<p class="gw-sync-desc">Vali oma kell või terviseäpp ja kanna tänane sammude seis GoWalki üle (nt enne kõndi stardiseisu ühtlustamiseks):</p>',
         '<div class="gw-sync-mode-tabs">',
@@ -98,7 +78,7 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
 
       '<div class="gw-sync-card">',
         '<div class="gw-sync-head">',
-          '<span class="gw-sync-title"><i data-lucide="map-pin" style="color:#38bdf8;"></i> 2. Impordi kella GPS-rada või fail</span>',
+          '<span class="gw-sync-title"><i data-lucide="map-pin" style="color:#38bdf8;"></i> Impordi treeningufail</span>',
         '</div>',
         '<p class="gw-sync-desc">Lae üles kellast või terviseäpist eksporditud treeningufail (<strong>.GPX, .TCX, .CSV, .JSON</strong>). GoWalk joonistab kella GPS-raja kaardile ja arvutab sammud ning kilomeetrid:</p>',
         '<input type="file" id="gwHealthFileInput" accept=".gpx,.tcx,.csv,.json,.xml" style="display:none;" />',
@@ -107,13 +87,6 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
           '<span>Vali fail telefonist (.GPX, .TCX, .CSV, .JSON)</span>',
         '</button>',
         '<div id="gwFileImportFeedback" class="gw-sync-feedback"></div>',
-      '</div>',
-
-      '<div class="gw-sync-card">',
-        '<div class="gw-sync-head">',
-          '<span class="gw-sync-title"><i data-lucide="watch" style="color:#a855f7;"></i> 3. Sinu ühendatud platvorm</span>',
-        '</div>',
-        '<div class="gw-sync-grid">' + provHtml + '</div>',
       '</div>',
     '</div>'
   ].join('');
@@ -145,19 +118,6 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
       return;
     }
 
-    const provBtn = e.target.closest('.gw-sync-prov');
-    if (provBtn) {
-      const chosen = provBtn.getAttribute('data-prov') || 'Samsung Health';
-      state.settings.syncProvider = chosen;
-      saveState();
-      const allP = bodyEl.querySelectorAll('.gw-sync-prov');
-      for (let i = 0; i < allP.length; i++) allP[i].classList.remove('active');
-      provBtn.classList.add('active');
-      const badge = document.getElementById('gwActiveProviderBadge');
-      if (badge) badge.textContent = chosen;
-      return;
-    }
-
     if (e.target.closest('#gwApplySyncStepsBtn')) {
       const inp = document.getElementById('gwSyncStepsInput');
       const fb = document.getElementById('gwSyncFeedbackMsg');
@@ -178,9 +138,7 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
 
       if (fb) {
         fb.textContent =
-          '✓ Sünkroniseeritud (' +
-          (state.settings.syncProvider || 'Kell') +
-          '): täna kokku ' +
+          '✓ Salvestatud: täna kokku ' +
           state.today.steps.toLocaleString('et-EE') +
           ' sammu (' +
           state.today.distanceKm.toFixed(2) +
@@ -360,15 +318,4 @@ export function setupWatchAndPhoneSyncModal(updateHudFn, closeAllModalsAndGoHome
     });
   }
 
-  const quickSyncBtn = document.getElementById('quickSyncBtn');
-  if (quickSyncBtn) {
-    quickSyncBtn.style.display = 'inline-flex';
-    quickSyncBtn.onclick = function () {
-      closeAllModalsAndGoHomeFn();
-      const inp = document.getElementById('gwSyncStepsInput');
-      if (inp) inp.value = String(state.today.steps || 0);
-      syncModal.classList.add('open');
-      if (window.lucide) window.lucide.createIcons();
-    };
-  }
 }

@@ -33,6 +33,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `features/stride-calculator.js` | sammupikkuse kalkulaator |
 | `features/profile-auth.js` | profiili- ja sisselogimismodaalid |
 | `features/theme-nav.js` | Midnight Indigo teema ja alumine navigatsioon |
+| `features/native-mode.js` | tuvastab natiivse äpi, lisab `is-native` klassi ja peidab veebi-spetsiifilised menüüd (nt "Paigalda äpp") |
 | `features/health.js` | päeva sammud telefonist (Health Connect / Apple Health), nupp "Võta sammud telefonist"; veebis ei tee midagi |
 
 ## Reeglid
@@ -48,6 +49,8 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - [ ] Profiili ja vaadete (`renderProfile`, `openDrawer`, `open...View`) eraldamine
 - [x] Vite + `package.json` + Capacitori konfiguratsioon (Android)
 - [x] Sammude lugemine Health Connectist (`features/health.js`), testimata päris telefonis
+- [x] UI lihtsustus samm 1: külgmenüü 3 punkti, "Sammud ja import" (käsitsi + failiimport), sammude allikas natiivis automaatne
+- [ ] UI lihtsustus samm 2 (avaleht) ja samm 3 (alumine navigatsioon 3 sakki, seaded)
 - [ ] Marsruudi kvaliteet puuduvate sammude põhjal
 - [ ] iOS (Apple Health)
 - [ ] Taustal asukoha jälgimine natiivse pluginaga (`navigator.geolocation` ei tööta taustal)

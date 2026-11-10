@@ -61,38 +61,11 @@
 
     <!-- Menüüpunktid täpses järjekorras -->
     <nav class="drawer-nav">
-      <button class="nav-item active" data-target="home">
-        <span class="nav-icon"><i data-lucide="home"></i></span>
-        <div class="nav-text">
-          <span class="nav-title">Avaleht</span>
-          <span class="nav-sub">Kõnd & Kaart</span>
-        </div>
-        <i data-lucide="chevron-right" class="nav-arrow"></i>
-      </button>
-
-      <button class="nav-item" data-target="statsModal">
-        <span class="nav-icon"><i data-lucide="bar-chart-3"></i></span>
-        <div class="nav-text">
-          <span class="nav-title">Statistika & Ajalugu</span>
-          <span class="nav-sub">Kõik andmed alatiseks alles</span>
-        </div>
-        <i data-lucide="chevron-right" class="nav-arrow"></i>
-      </button>
-
       <button class="nav-item" data-target="syncModal">
         <span class="nav-icon"><i data-lucide="refresh-cw"></i></span>
         <div class="nav-text">
-          <span class="nav-title">Terviseandmete sünkroniseerimine</span>
-          <span class="nav-sub">Samsung, Apple, Fitbit, Xiaomi, Garmin...</span>
-        </div>
-        <i data-lucide="chevron-right" class="nav-arrow"></i>
-      </button>
-
-      <button class="nav-item" data-target="settingsModal">
-        <span class="nav-icon"><i data-lucide="settings"></i></span>
-        <div class="nav-text">
-          <span class="nav-title">Seaded & Sooduskood</span>
-          <span class="nav-sub">Sammupikkus, eesmärk, koodid, eksport</span>
+          <span class="nav-title">Sammud ja import</span>
+          <span class="nav-sub">Käsitsi sisestus, kellafail (GPX/TCX)</span>
         </div>
         <i data-lucide="chevron-right" class="nav-arrow"></i>
       </button>
@@ -151,7 +124,7 @@
         <span class="pro-tag">PRO</span>
       </div>
 
-      <button id="quickSyncBtn" class="glass-icon-btn sync-status-btn" title="Sünkroniseeri sammud">
+      <button id="quickSyncBtn" class="glass-icon-btn sync-status-btn" aria-hidden="true" tabindex="-1" style="visibility:hidden;pointer-events:none;">
         <i data-lucide="activity"></i>
       </button>
     </header>
