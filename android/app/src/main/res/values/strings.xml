@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GoWalk</string>
+    <string name="title_activity_main">GoWalk</string>
+    <string name="package_name">com.gowalkapp.gowalk</string>
+    <string name="custom_url_scheme">com.gowalkapp.gowalk</string>
+</resources>

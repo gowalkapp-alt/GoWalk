@@ -29,6 +29,7 @@ import { setupCustomMapStylePicker } from './features/map-style-picker.js';
 import { setupStrideCalculator } from './features/stride-calculator.js';
 import { setupProfileAndAuthModals } from './features/profile-auth.js';
 import { applyMidnightIndigoThemeAndNav } from './features/theme-nav.js';
+import { setupHealthSync } from './features/health.js';
 
 
 function bootGoWalkApp() {
@@ -766,6 +767,7 @@ function bootGoWalkApp() {
   setupStrideCalculator(updateHudUI);
   setupCustomMapStylePicker();
   setupProfileAndAuthModals(renderProfile, refreshAllUI);
+  setupHealthSync(updateHudUI);
   refreshAllUI();
   initSupabase(refreshAllUI);
 }

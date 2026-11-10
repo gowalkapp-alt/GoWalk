@@ -1,6 +1,15 @@
 # GoWalk – arhitektuur
 
-Tavaline veebirakendus ilma ehitussüsteemita (ES-moodulid brauseris). Hostitud Vercelis.
+Veebirakendus (ES-moodulid) + Vite ehitus + Capacitor (Android). Veebiversioon on hostitud Vercelis.
+
+## Käsud
+
+- `npm install` – paigalda sõltuvused (üks kord)
+- `npm run dev` – kohalik arendusserver
+- `npm run build` – ehitab kausta `dist/`
+- `npm run android` – ehitab, sünkroonib Androidi projekti ja avab Android Studio
+
+Telefoniga seotud kood kontrollib `window.Capacitor.isNativePlatform()` ja on veebis passiivne.
 Välised teegid CDN-ist: Leaflet (kaart), Lucide (ikoonid), Supabase JS (laetakse `state.js` kaudu).
 Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik olek).
 
@@ -24,6 +33,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `features/stride-calculator.js` | sammupikkuse kalkulaator |
 | `features/profile-auth.js` | profiili- ja sisselogimismodaalid |
 | `features/theme-nav.js` | Midnight Indigo teema ja alumine navigatsioon |
+| `features/health.js` | päeva sammud telefonist (Health Connect / Apple Health), nupp "Võta sammud telefonist"; veebis ei tee midagi |
 
 ## Reeglid
 
@@ -36,7 +46,10 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - [x] `app.js` setup-funktsioonid eraldi `features/` moodulitesse (app.js 2238 → ~780 rida)
 - [ ] Jalutuse jälgimine (GPS, liikumissensor, paus, HUD, ca 500 rida `bootGoWalkApp()` sees) eraldi `features/walk-tracker.js`
 - [ ] Profiili ja vaadete (`renderProfile`, `openDrawer`, `open...View`) eraldamine
-- [ ] Vite + `package.json`, siis Capacitor (Android → iOS)
+- [x] Vite + `package.json` + Capacitori konfiguratsioon (Android)
+- [x] Sammude lugemine Health Connectist (`features/health.js`), testimata päris telefonis
+- [ ] Marsruudi kvaliteet puuduvate sammude põhjal
+- [ ] iOS (Apple Health)
 - [ ] Taustal asukoha jälgimine natiivse pluginaga (`navigator.geolocation` ei tööta taustal)
 
 ## Teadaolevad pisiasjad
