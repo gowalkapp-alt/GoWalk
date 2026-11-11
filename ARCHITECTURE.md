@@ -37,6 +37,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `features/theme-nav.js` | Midnight Indigo teema ja alumine navigatsioon |
 | `features/native-mode.js` | tuvastab natiivse äpi, lisab `is-native` klassi ja peidab veebi-spetsiifilised menüüd (nt "Paigalda äpp") |
 | `features/simple-home.js` | avalehe ja seadete lihtsustus: kaardistiili ikoon, tagasivõtmise/puhastuse nupud ainult raja olemasolul, külgmenüü sisu Seadetesse |
+| `features/background-gps.js` | taustal GPS kõndimise ajal (Android foreground service, plugin `@capgo/background-geolocation`); veebis ei tee midagi |
 | `features/health.js` | päeva sammud telefonist (Health Connect / Apple Health), nupp "Võta sammud telefonist"; veebis ei tee midagi |
 
 ## Reeglid
@@ -57,7 +58,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - [x] UI lihtsustus samm 3: alumine menüü 3 sakki (Avaleht / Ajalugu / Seaded), külgmenüü peidetud, profiil, menüüpunktid ja versioon asuvad Seadetes (`setupSimpleSettings` tõstab olemasolevad elemendid ümber)
 - [x] Marsruudi kvaliteet v1: 3 kandidaati eri suundades, hinnang ja parima valik, pikkuse täpsustus, päris pikkuse näitamine (testimata päris võrgus)
 - [ ] iOS (Apple Health)
-- [ ] Taustal asukoha jälgimine natiivse pluginaga (`navigator.geolocation` ei tööta taustal)
+- [x] Taustal asukoha jälgimine natiivse pluginaga (`features/background-gps.js`, Android; testimata päris telefonis; iOS hiljem)
 
 ## Teadaolevad pisiasjad
 

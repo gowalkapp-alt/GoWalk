@@ -10,6 +10,11 @@ export function setupSimpleHome() {
   const style = document.createElement('style');
   style.id = 'gw-simple-home-style';
   style.textContent = [
+    // Androidi süsteemi navigatsiooniriba (kolm nuppu all) ei tohi katta alumist menüüd
+    ':root { --gw-inset-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)); }',
+    '.gw-bottom-navbar { height: calc(64px + var(--gw-inset-bottom)) !important; padding-bottom: var(--gw-inset-bottom) !important; box-sizing: border-box; }',
+    '.hud-card, .bottom-hud, #bottomHud { bottom: calc(74px + var(--gw-inset-bottom)) !important; }',
+    '.subview-modal { padding-bottom: calc(76px + var(--gw-inset-bottom)) !important; }',
     '.map-layer-bar { display: none; }',
     '.map-layer-bar.open { display: flex; flex-wrap: wrap; }',
     '.map-floating-tools #undoWaypointBtn, .map-floating-tools #clearRouteBtn { display: none; }',

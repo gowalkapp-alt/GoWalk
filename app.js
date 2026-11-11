@@ -31,7 +31,8 @@ import { setupStrideCalculator } from './features/stride-calculator.js';
 import { setupProfileAndAuthModals } from './features/profile-auth.js';
 import { applyMidnightIndigoThemeAndNav } from './features/theme-nav.js';
 import { setupHealthSync } from './features/health.js';
-import { setupNativeMode } from './features/native-mode.js';
+import { setupNativeMode, isNativeApp } from './features/native-mode.js';
+import { startBackgroundGps, stopBackgroundGps } from './features/background-gps.js';
 import { setupSimpleHome, setupSimpleSettings } from './features/simple-home.js';
 
 
@@ -558,6 +559,17 @@ function bootGoWalkApp() {
     }
   }
 
+  // Teade avalehel, kui taustal GPS-i ei saa kasutada (nt luba puudub)
+  function showGpsProblem(kind) {
+    const el = document.getElementById('healthSyncStatus');
+    if (!el) return;
+    el.textContent =
+      kind === 'no-permission'
+        ? 'Luba asukoht ("Alati lubatud" või "Äpi kasutamise ajal"), et rada salvestuks ka ekraani kustudes.'
+        : 'Taustal asukoha jälgimine ei käivitunud, rada salvestub ainult kui ekraan on sees.';
+    el.classList.add('error');
+  }
+
   function syncWalkElapsedTime() {
     if (!isWalking || isPaused || !lastTimerCheckMs) return;
     const nowMs = Date.now();
@@ -651,17 +663,27 @@ function bootGoWalkApp() {
         sensorStepsSinceLastGps = 0;
         lastTimerCheckMs = Date.now();
 
-        await requestPocketWakeLock();
+        // Natiivses äpis jätkab taustal GPS ka siis, kui ekraan kustub; ekraani ei pea üleval hoidma.
+        if (!isNativeApp()) await requestPocketWakeLock();
         await startMotionStepSensor();
 
         walkTimer = setInterval(syncWalkElapsedTime, 1000);
 
-        if (navigator.geolocation && window.L) {
-          gpsWatchId = navigator.geolocation.watchPosition(
-            handleGpsPosition,
-            function () {},
-            { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
-          );
+        if (window.L) {
+          let usingBackground = false;
+          if (isNativeApp()) {
+            usingBackground = await startBackgroundGps(handleGpsPosition, showGpsProblem);
+            // Kui kasutaja jõudis kõnni vahepeal lõpetada, peata taustal GPS kohe
+            if (usingBackground && !isWalking) await stopBackgroundGps();
+          }
+          // Veebis või kui taustal GPS ei käivitunud: tavaline asukoha jälgimine (töötab ainult ekraani sees)
+          if (!usingBackground && navigator.geolocation && isWalking) {
+            gpsWatchId = navigator.geolocation.watchPosition(
+              handleGpsPosition,
+              function () {},
+              { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
+            );
+          }
         }
         updateHudUI();
       } else {
@@ -677,6 +699,7 @@ function bootGoWalkApp() {
 
         stopMotionStepSensor();
         await releasePocketWakeLock();
+        await stopBackgroundGps();
 
         if (gpsWatchId !== null && navigator.geolocation) {
           navigator.geolocation.clearWatch(gpsWatchId);

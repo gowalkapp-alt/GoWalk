@@ -84,20 +84,16 @@ export function detourOptions(from, to, extraRoadM, bearingHint = 0, rand = Math
   const c = distanceM(from, to);
   if (c < 200) {
     const b = bearingHint;
-    return [
-      { mode: 'loop', bearing: b, side: 1 },
-      { mode: 'loop', bearing: b + (2 * Math.PI) / 3, side: 1 },
-      { mode: 'loop', bearing: b + (4 * Math.PI) / 3, side: -1 },
-      { mode: 'loop', bearing: b + Math.PI, side: -1 }
-    ];
+    const steps = [0, 1, 2, 3, 4, 5];
+    return steps.map(i => ({ mode: 'loop', bearing: b + (i * Math.PI) / 3, side: i % 2 === 0 ? 1 : -1 }));
   }
   const k = extraRoadM > 2500 ? 2 : 1;
   // Väike juhuslik nihe, et "Teine suund" annaks iga kord erineva ringi
   const jitter = (rand() - 0.5) * 0.16;
-  const ts = (k === 1 ? [0.5, 0.5, 0.35, 0.65] : [0.25, 0.25, 0.33, 0.33]).map(t =>
-    Math.min(0.7, Math.max(0.2, t + jitter))
+  const ts = (k === 1 ? [0.5, 0.5, 0.35, 0.65, 0.25, 0.75] : [0.25, 0.25, 0.33, 0.33, 0.2, 0.2]).map(t =>
+    Math.min(0.78, Math.max(0.2, t + jitter))
   );
-  const sides = [1, -1, 1, -1];
+  const sides = [1, -1, 1, -1, 1, -1];
   return ts.map((t, i) => ({ mode: 'chord', k, t, side: sides[i] }));
 }
 

@@ -644,7 +644,7 @@ function buildTrueCircularWaypoints(
   return resultPoints;
 }
 
-function removeDeadEndSpurs(latlngs) {
+function removeDeadEndSpurs(latlngs, protectedPts = []) {
   if (!Array.isArray(latlngs) || latlngs.length < 8 || !map) return latlngs;
   let pts = latlngs.slice();
 
@@ -658,6 +658,18 @@ function removeDeadEndSpurs(latlngs) {
         if (i < 5 && j > pts.length - 6) continue;
         const distBetween = map.distance(pts[i], pts[j]);
         if (distBetween < 18) {
+          // Ära lõika välja lõiku, mis läbib kasutaja peatust (nt pood tupikus)
+          let touchesProtected = false;
+          for (const q of protectedPts) {
+            for (let k = i; k <= j; k++) {
+              if (map.distance(pts[k], q) < 45) {
+                touchesProtected = true;
+                break;
+              }
+            }
+            if (touchesProtected) break;
+          }
+          if (touchesProtected) continue;
           jumpIndex = j;
           break;
         }
@@ -1065,21 +1077,31 @@ async function generateRouteThroughStops(startPoint, targetMeters, safeLitOnly) 
       const wps = buildStopWaypoints(startPoint, firsts, fillers, lasts);
       const route = await fetchLoopRouteGeometry(wps, safeLitOnly, true);
       if (!route || !route.geometry) return null;
-      const pts = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+      let pts = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+      // Täitepunktid võivad tekitada "vurre" (tupikusse minek ja tagasi): lõika need ära,
+      // aga jäta alles kõik lõigud, mis läbivad kasutaja peatust.
+      pts = removeDeadEndSpurs(pts, userStops.map(st => st.latlng));
       return { pts, desc, extraM };
     };
 
     const found = (await Promise.all(options.map(d => build(d, extra).catch(() => null)))).filter(Boolean);
     let best = pickBestRoute(found, targetMeters);
 
-    // Täpsusta pikkust: lisa/võta ringilt puuduv/liigne
-    if (best && !best.desc.none && best.quality.errFrac > 0.08) {
+    // Täpsusta pikkust (kuni 2 korda): lisa/võta ringilt puuduv/liigne.
+    // Kui rada on liiga pikk ja ringi pole enam vaja, jäta ainult peatused.
+    for (let attempt = 0; attempt < 2 && best && best.quality.errFrac > 0.08; attempt++) {
       const newExtra = best.extraM + (targetMeters - best.quality.lengthM);
-      if (newExtra > 80) {
-        const refined = await build(best.desc, newExtra).catch(() => null);
-        const pick = pickBestRoute([best, refined].filter(Boolean), targetMeters);
-        if (pick) best = pick;
-      }
+      if (best.desc.none && newExtra <= 80) break;
+      const desc =
+        newExtra <= 80
+          ? { none: true }
+          : best.desc.none
+            ? detourOptions(from, to, newExtra, lastGeneratedBearing)[0]
+            : best.desc;
+      const refined = await build(desc, Math.max(0, newExtra)).catch(() => null);
+      const pick = pickBestRoute([best, refined].filter(Boolean), targetMeters);
+      if (!pick || pick === best) break;
+      best = pick;
     }
 
     if (!best) {

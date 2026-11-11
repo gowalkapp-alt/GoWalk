@@ -1,5 +1,8 @@
 {
   "appId": "com.gowalkapp.gowalk",
   "appName": "GoWalk",
-  "webDir": "dist"
+  "webDir": "dist",
+  "android": {
+    "useLegacyBridge": true
+  }
 }
