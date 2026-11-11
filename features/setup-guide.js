@@ -8,6 +8,7 @@ const DONE_KEY = 'gw_setup_done';
 const SEEN_KEY = 'gw_setup_seen';
 let modal = null;
 let statusCache = null;
+let batteryError = '';
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
@@ -21,8 +22,10 @@ async function checkBattery() {
   try {
     const B = await batteryApi();
     const r = await B.isBatteryOptimizationEnabled();
+    batteryError = '';
     return r.enabled ? 'limited' : 'ok';
   } catch (e) {
+    batteryError = String((e && e.message) || e).slice(0, 160);
     return 'unknown';
   }
 }
@@ -33,7 +36,7 @@ async function checkLocation() {
       const p = await navigator.permissions.query({ name: 'geolocation' });
       if (p.state === 'granted') return 'ok';
       if (p.state === 'denied') return 'denied';
-      return 'ask';
+      return lsGet('gw_loc_asked') ? 'ok' : 'ask';
     }
   } catch (e) { /* ignore */ }
   return lsGet('gw_loc_asked') ? 'ok' : 'ask';
@@ -109,8 +112,9 @@ function render() {
     '<li>Seaded → <strong>Aku</strong> → <strong>Taustakasutuse piirangud</strong>.</li>' +
     '<li>Lülita välja <strong>„Pane kasutamata rakendused magama“</strong>.</li>' +
     '<li>Ava <strong>„Magavad rakendused“</strong> ja <strong>„Sügavalt magavad rakendused“</strong> – kui GoWalk on seal, eemalda see.</li></ol></details>';
+  const errNote = batteryError ? '<p style="color:#fbbf24;font-size:0.8rem">Tehniline viga: ' + batteryError.replace(/</g, '') + '</p>' : '';
   const batCard = card('battery-charging', '3. Taustal töötamine', s.battery === 'ok' ? 'ok' : (s.battery === 'unknown' ? '' : 'warn'),
-    batText, s.battery === 'ok' ? '' : btn('bat', 'Luba taustal töötada'), sam);
+    batText, s.battery === 'ok' ? '' : btn('bat', 'Luba taustal töötada'), errNote + sam);
 
   const allOk = s.ready;
   body.innerHTML =
@@ -133,12 +137,10 @@ async function onAction(act) {
   else if (act === 'hc-perm') { await requestStepsPermission(); }
   else if (act === 'loc') {
     await requestTrackingPermissions();
-    try {
-      await new Promise(res => navigator.geolocation.getCurrentPosition(res, res, { timeout: 8000 }));
-    } catch (e) { /* ignore */ }
-    lsSet('gw_loc_asked', '1');
+    const got = await new Promise(res => navigator.geolocation.getCurrentPosition(() => res(true), () => res(false), { timeout: 10000 }));
+    if (got) lsSet('gw_loc_asked', '1');
   } else if (act === 'bat') {
-    try { const B = await batteryApi(); await B.openBatteryOptimizationSettings(); } catch (e) { /* ignore */ }
+    try { const B = await batteryApi(); await B.openBatteryOptimizationSettings(); batteryError = ''; } catch (e) { batteryError = String((e && e.message) || e).slice(0, 160); }
   }
   await refresh();
 }
