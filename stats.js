@@ -288,11 +288,17 @@ function injectStatsCss() {
     '.gw-wk-list { display:flex; flex-direction:column; gap:7px; font-size:0.84rem; color:#e2e8f0; }',
     '.gw-wk-item { display:flex; align-items:center; gap:8px; font-weight:700; }',
     '.gw-wk-item svg { width:15px; height:15px; color:#f472b6; }',
-    '.gw-wk-grid { display:grid; grid-template-columns:28px 1fr; gap:8px; align-items:end; height:112px; padding-top:8px; }',
+    '.gw-wk-grid { display:block; padding-top:6px; }',
     '.gw-yaxis { display:flex; flex-direction:column; justify-content:space-between; height:88px; font-size:0.66rem; color:#94a3b8; font-weight:600; padding-bottom:18px; }',
-    '.gw-wbars { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; height:106px; align-items:end; }',
-    '.gw-wcol { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:6px; cursor:pointer; }',
-    '.gw-wbar { width:100%; max-width:14px; border-radius:99px; background-image:url("' + barPng + '") !important; background-size:100% 100% !important; min-height:10px; transition:height 0.25s ease; opacity:0.82; }',
+    '.gw-wbars { position:relative; display:grid; grid-template-columns:repeat(7,1fr); gap:8px; align-items:end; }',
+    '.gw-wcol { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; cursor:pointer; }',
+    '.gw-wval { font-size:0.62rem; font-weight:700; color:#94a3b8; height:14px; line-height:14px; }',
+    '.gw-wcol.active .gw-wval { color:#f9a8d4; }',
+    '.gw-wtrack { height:84px; width:100%; display:flex; align-items:flex-end; justify-content:center; }',
+    '.gw-wcol.hit .gw-wbar { background-image:linear-gradient(180deg,#34d399,#0ea5e9) !important; }',
+    '.gw-goalline { position:absolute; left:0; right:0; border-top:1px dashed rgba(52,211,153,0.6); pointer-events:none; }',
+    '.gw-goalline span { position:absolute; right:0; top:2px; font-size:0.6rem; color:#6ee7b7; background:rgba(15,20,42,0.8); padding:0 4px; border-radius:6px; }',
+    '.gw-wbar { width:100%; max-width:14px; border-radius:99px; background-image:url("' + barPng + '") !important; background-size:100% 100% !important; min-height:6px; transition:height 0.25s ease; opacity:0.85; }',
     '.gw-wcol.active .gw-wbar { opacity:1; box-shadow:0 0 14px rgba(236,72,153,0.75); border:1px solid #f472b6; }',
     '.gw-wday { font-size:0.7rem; font-weight:600; color:#94a3b8; }',
     '.gw-wcol.active .gw-wday { color:#f472b6; font-weight:800; }',
@@ -633,25 +639,23 @@ export function renderStatsAndHistory() {
     });
   }
 
+  const weekScale = Math.max(dailyGoal, maxWeekSteps, 1);
+  const TRACK_H = 84;
+  const kfmt = function (n) { return n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '') + 'k' : String(n); };
   let weekBarsHtml = '';
   for (let i = 0; i < weekItems.length; i++) {
     const it = weekItems[i];
-    const hPct = it.steps > 0 ? Math.max(18, Math.round((it.steps / maxWeekSteps) * 100)) : 12;
-    const cName = it.active ? 'gw-wcol active' : 'gw-wcol';
+    const hPct = it.steps > 0 ? Math.max(6, Math.round((it.steps / weekScale) * 100)) : 3;
+    const cName = (it.active ? 'gw-wcol active' : 'gw-wcol') + (it.steps >= dailyGoal ? ' hit' : '');
     weekBarsHtml +=
-      '<div class="' +
-      cName +
-      '" data-wdate="' +
-      it.key +
-      '">' +
-      '<div class="gw-wbar" style="height:' +
-      hPct +
-      '%;"></div>' +
-      '<span class="gw-wday">' +
-      it.day +
-      '</span>' +
+      '<div class="' + cName + '" data-wdate="' + it.key + '">' +
+      '<span class="gw-wval">' + (it.steps > 0 ? kfmt(it.steps) : '') + '</span>' +
+      '<div class="gw-wtrack"><div class="gw-wbar" style="height:' + hPct + '%;"></div></div>' +
+      '<span class="gw-wday">' + it.day + '</span>' +
       '</div>';
   }
+  const goalBottomPx = 22 + Math.round(TRACK_H * (dailyGoal / weekScale));
+  weekBarsHtml += '<div class="gw-goalline" style="bottom:' + goalBottomPx + 'px;"><span>Eesmärk ' + kfmt(dailyGoal) + '</span></div>';
 
   const sortedDays = Array.from(daysMap.values()).sort(function (a, b) {
     return b.date.localeCompare(a.date);
@@ -805,7 +809,6 @@ export function renderStatsAndHistory() {
           '<button type="button" class="gw-card-link" id="gwScrollToHistoryBtn">Vaata kõiki <i data-lucide="chevron-right" style="width:14px;height:18px;"></i></button>',
         '</div>',
         '<div class="gw-wk-grid">',
-          '<div class="gw-yaxis"><span>10K</span><span>5K</span><span>0</span></div>',
           '<div class="gw-wbars">' + weekBarsHtml + '</div>',
         '</div>',
       '</div>',
