@@ -96,6 +96,59 @@ export async function readTodayStepsFromHealth({ askPermission = false } = {}) {
   }
 }
 
+/** Avab Health Connecti (või viib selle paigaldamiseni). */
+export async function openHealthConnect() {
+  if (!isNative()) return false;
+  try {
+    const healthModule = await withTimeout(loadHealthModule(), 15000, 'plugina laadimine');
+    await withTimeout(healthModule.Health.openHealthConnectSettings(), 10000, 'openHealthConnectSettings');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Küsib sammude lugemise luba. @returns {Promise<boolean>} true, kui luba anti */
+export async function requestStepsPermission() {
+  const res = await readTodayStepsFromHealth({ askPermission: true });
+  return res.ok;
+}
+
+/**
+ * Seadistuse kontroll tavakeeles.
+ * state: 'web' | 'unavailable' | 'no-permission' | 'no-data' | 'ok' | 'error'
+ * sources: rakendused, mis on viimase 24 h jooksul Health Connecti samme kirjutanud
+ */
+export async function inspectHealth() {
+  if (!isNative()) return { state: 'web', steps: 0, sources: [] };
+  const res = await readTodayStepsFromHealth({ askPermission: false });
+  if (!res.ok) {
+    if (res.reason === 'no-permission' || res.reason === 'denied') return { state: 'no-permission', steps: 0, sources: [] };
+    if (res.reason === 'unavailable') return { state: 'unavailable', steps: 0, sources: [], detail: res.detail };
+    return { state: 'error', steps: 0, sources: [], detail: res.detail || res.reason };
+  }
+  let sources = [];
+  try {
+    const healthModule = await withTimeout(loadHealthModule(), 15000, 'plugina laadimine');
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const raw = await withTimeout(
+      healthModule.Health.readSamples({
+        dataType: 'steps',
+        startDate: since.toISOString(),
+        endDate: new Date().toISOString(),
+        limit: 100
+      }),
+      15000,
+      'readSamples'
+    );
+    const names = (raw.samples || []).map(s => s.sourceName || s.sourceId).filter(Boolean);
+    sources = Array.from(new Set(names));
+  } catch (e) {
+    /* allikate nimekiri on lisainfo, mitte kohustuslik */
+  }
+  return { state: res.steps > 0 ? 'ok' : 'no-data', steps: res.steps, sources };
+}
+
 /**
  * Loeb sammud ja kirjutab need olekusse, kui telefon teab rohkem kui äpp.
  * (Maksimum, mitte asendus: käsitsi sisestatud või äpi enda lugemit ei vähendata.)
@@ -131,7 +184,8 @@ function injectHealthStyle() {
     '.gw-health-btn[disabled] { opacity: 0.6; }',
     '.gw-health-btn svg { width: 17px; height: 17px; stroke-width: 2.4px; }',
     '.gw-health-status { min-height: 16px; text-align: center; font-size: 12px; color: var(--text-secondary); }',
-    '.gw-health-status.error { color: var(--danger); }'
+    '.gw-health-status.error { color: var(--danger); }',
+    '.gw-health-link { background: none; border: 0; padding: 0; color: var(--accent-secondary, #c084fc); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }'
   ].join('\n');
   document.head.appendChild(style);
 }
@@ -160,9 +214,19 @@ export function setupHealthSync(onStepsUpdated) {
   const status = wrap.querySelector('#healthSyncStatus');
   let busy = false;
 
-  function show(text, isError) {
+  // Teade avalehel; tegevust vajava teate juurde tuleb nupp "Seadista"
+  function show(text, isError, withSetupLink) {
     status.textContent = text;
     status.classList.toggle('error', !!isError);
+    if (withSetupLink) {
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'gw-health-link';
+      link.textContent = 'Seadista';
+      link.addEventListener('click', () => document.dispatchEvent(new CustomEvent('gw:open-setup')));
+      status.appendChild(document.createTextNode(' '));
+      status.appendChild(link);
+    }
   }
 
   async function run(askPermission) {
@@ -176,15 +240,19 @@ export function setupHealthSync(onStepsUpdated) {
     try {
       const res = await syncStepsFromHealth(onStepsUpdated, { askPermission });
       if (res.ok) {
-        show((res.applied ? 'Sammud uuendatud: ' + res.steps : 'Sammud on ajakohased (' + res.steps + ')') + (res.note ? ' · ' + res.note : ''), false);
+        if (res.steps === 0) {
+          show('Health Connect ei näe täna ühtegi sammu.', true, true);
+        } else {
+          show((res.applied ? '✓ Sammud värskendatud: ' : '✓ Sammud on ajakohased: ') + res.steps, false);
+        }
       } else if (res.reason === 'no-permission') {
-        show('', false);
+        show('Luba sammude lugemine, et sammud tuleksid automaatselt.', false, true);
       } else if (res.reason === 'denied') {
-        show('Luba sammude lugemine Health Connectis, et sammud automaatselt tuleksid.', true);
+        show('Sammude lugemine pole lubatud.', true, true);
       } else if (res.reason === 'unavailable') {
-        show('Health Connect ei ole selles telefonis saadaval.' + (res.detail ? ' (' + res.detail + ')' : ''), true);
+        show('Health Connect puudub sinu telefonis.', true, true);
       } else {
-        show('Sammude lugemine ebaõnnestus: ' + (res.detail || res.reason), true);
+        show('Sammude lugemine ebaõnnestus.', true, true);
       }
     } finally {
       busy = false;

@@ -103,3 +103,15 @@ export async function stopBackgroundGps() {
     /* peatamise viga ei tohi kõndi salvestamist takistada */
   }
 }
+
+/** Küsib asukoha- ja teavituseluba (seadistuse viisardis). @returns {Promise<boolean>} true, kui kutse õnnestus */
+export async function requestTrackingPermissions() {
+  if (!isNative()) return false;
+  try {
+    const mod = await withTimeout(loadModule(), 15000, 'plugina laadimine');
+    await withTimeout(mod.BackgroundGeolocation.requestPermissions({ permissions: ['location', 'notification'] }), 120000, 'load');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}

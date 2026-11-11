@@ -9,6 +9,7 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
+    implementation project(':capawesome-team-capacitor-android-battery-optimization')
     implementation project(':capgo-background-geolocation')
     implementation project(':capgo-capacitor-health')
 

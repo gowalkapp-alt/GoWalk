@@ -34,6 +34,8 @@ import { setupHealthSync } from './features/health.js';
 import { setupNativeMode, isNativeApp } from './features/native-mode.js';
 import { startBackgroundGps, stopBackgroundGps } from './features/background-gps.js';
 import { setupSimpleHome, setupSimpleSettings } from './features/simple-home.js';
+import { setupSetupGuide } from './features/setup-guide.js';
+import { setupFaq } from './features/faq.js';
 
 
 function bootGoWalkApp() {
@@ -799,6 +801,8 @@ function bootGoWalkApp() {
   setupCustomMapStylePicker();
   setupProfileAndAuthModals(renderProfile, refreshAllUI);
   setupHealthSync(updateHudUI);
+  setupFaq();
+  setupSetupGuide();
   refreshAllUI();
   initSupabase(refreshAllUI);
 }

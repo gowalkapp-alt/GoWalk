@@ -111,33 +111,6 @@ export function applyMidnightIndigoThemeAndNav(openRouteBuilderFn, openStatsFn, 
     document.head.appendChild(st);
   }
 
-  const helpModal = document.getElementById('helpModal');
-  if (helpModal) {
-    const helpBody = helpModal.querySelector('.subview-body');
-    if (helpBody && !helpBody.dataset.updatedHelp) {
-      helpBody.dataset.updatedHelp = '1';
-      helpBody.innerHTML = [
-        '<div class="help-card">',
-          '<h4><i data-lucide="locate-fixed"></i> Täpne GPS & Alguspunkt (Pin A)</h4>',
-          '<p>Äpp tuvastab avamisel automaatselt sinu asukoha. Kui soovid alguspunkti muuta, hoia näppu lillal alguspunktil (<strong>Pin A</strong>) ja lohista see sobivasse kohta või vajuta kaardi paremal servas sihiku nupule.</p>',
-          '<p style="margin-top:4px;font-size:12px;color:#cbd5e1;"><strong>Nipp:</strong> Täpseima siseruumi GPS-i jaoks hoia telefonis sees <em>Täpne asukoht (Precise Location)</em> ja Wi-Fi otsing.</p>',
-        '</div>',
-        '<div class="help-card">',
-          '<h4><i data-lucide="shopping-bag"></i> Peatus (pood jms)</h4>',
-          '<p>Puuduta kaarti ja vali <strong>Kohe</strong> (käid esimesena läbi ja siis tuleb ring) või <strong>Tagasiteel</strong> (käid läbi enne koju jõudmist). Peatusi võib olla mitu. Rada arvutatakse nii, et kogu tee koos peatustega on sinu puuduvate sammude pikkune. Peatuse muutmiseks või eemaldamiseks puuduta selle märki.</p>',
-        '</div>',
-        '<div class="help-card">',
-          '<h4><i data-lucide="watch"></i> Kella & Telefoni Sünkroniseerimine</h4>',
-          '<p>Ava <strong>Seaded → Sammud ja import</strong>, et sisestada sammud käsitsi või laadida üles kellast eksporditud <strong>.GPX / .TCX</strong> treeningufail koos GPS-rajaga.</p>',
-        '</div>',
-        '<div class="help-card">',
-          '<h4><i data-lucide="footprints"></i> 360° Sammuketas & Kõnni salvestamine</h4>',
-          '<p>Puuduta avalehel oma sammude arvu või protsendirõngast, et avada <strong>360° sammuketas</strong> – või vajuta otse <strong>Alusta kõndimist</strong>, et salvestada vaba kõnd koos GPS-rajaga.</p>',
-        '</div>'
-      ].join('');
-    }
-  }
-
   if (!document.getElementById('gwRouteBuilderModal')) {
     const rb = document.createElement('div');
     rb.id = 'gwRouteBuilderModal';

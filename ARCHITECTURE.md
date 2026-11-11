@@ -67,3 +67,9 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - `gwRouteBuilderModal` (Marsruudid-vaade, `theme-nav.js`) pole enam menüüst ligipääsetav; raja pikkust ja tüüpi muudab ✨ nupp avalehel. Kustuta, kui pole vaja.
 
 - [x] Kasutaja peatused (pood): `route-stops.js` + map.js; peatused ei säili äpi taaskäivitamisel
+
+## Seadistus ja KKK
+- `features/setup-guide.js` – viisard (Seaded → Seadistus): sammud (Health Connect), asukoht/teavitus, aku/taust; kontrollib uuesti äpi tagasitulekul, avaneb esimesel käivitusel.
+- `features/faq.js` – otsitav KKK, asendab vana abi sisu (`#helpModal`).
+- `health.js`: `inspectHealth`, `openHealthConnect`, `requestStepsPermission`; `background-gps.js`: `requestTrackingPermissions`.
+- Uus sõltuvus: `@capawesome-team/capacitor-android-battery-optimization`.
