@@ -14,13 +14,13 @@ function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return n
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
 
 async function batteryApi() {
-  const mod = await import('@capawesome-team/capacitor-android-battery-optimization');
-  return mod.BatteryOptimization;
+  // NB: ei tagasta pluginat (Proxy) lubadusest – see jääks igaveseks ootama
+  return import('@capawesome-team/capacitor-android-battery-optimization');
 }
 
 async function checkBattery() {
   try {
-    const B = await batteryApi();
+    const B = (await batteryApi()).BatteryOptimization;
     const r = await B.isBatteryOptimizationEnabled();
     batteryError = '';
     return r.enabled ? 'limited' : 'ok';
@@ -140,7 +140,7 @@ async function onAction(act) {
     const got = await new Promise(res => navigator.geolocation.getCurrentPosition(() => res(true), () => res(false), { timeout: 10000 }));
     if (got) lsSet('gw_loc_asked', '1');
   } else if (act === 'bat') {
-    try { const B = await batteryApi(); await B.openBatteryOptimizationSettings(); batteryError = ''; } catch (e) { batteryError = String((e && e.message) || e).slice(0, 160); }
+    try { const B = (await batteryApi()).BatteryOptimization; await B.openBatteryOptimizationSettings(); batteryError = ''; } catch (e) { batteryError = String((e && e.message) || e).slice(0, 160); }
   }
   await refresh();
 }
