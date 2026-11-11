@@ -37,6 +37,7 @@ import { setupSimpleHome, setupSimpleSettings } from './features/simple-home.js'
 import { setupSetupGuide } from './features/setup-guide.js';
 import { setupFaq } from './features/faq.js';
 import { setupNativeAuthReturn } from './features/native-auth.js';
+import { setupSubpageBack } from './features/subpage-back.js';
 
 
 function bootGoWalkApp() {
@@ -805,6 +806,7 @@ function bootGoWalkApp() {
   setupFaq();
   setupNativeAuthReturn();
   setupSetupGuide();
+  setupSubpageBack();
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
