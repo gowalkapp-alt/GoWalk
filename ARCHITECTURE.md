@@ -23,6 +23,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `state.js` | globaalne `state`, `saveState`, Supabase init ja sünkroon, kasutajakonteksti vahetus |
 | `map.js` | Leaflet kaart, marsruutide genereerimine (Overpass API), läbitud raja salvestus |
 | `route-quality.js` | raja kvaliteedi hindamine (pikkuse viga, tagasikäimine, järsud pöörded, siksakid); puhtad funktsioonid, `pickBestRoute` |
+| `route-stops.js` | kasutaja peatuste (pood) arvutusloogika: järjekord, ringi täitepunktid, pikkuse sobitamine; puhtad funktsioonid |
 | `dial.js` | sammude valiku ratas (`setupStepDialModal`) |
 | `stats.js` | "Sinu areng" vaade: ajalugu, GPS-rajad, ülevaated (laetakse laisalt) |
 | `admin.js` | admini paneel ja promokoodid |
@@ -63,3 +64,5 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - `favicon.jpg` viitab olematule failile (repos on `favicon.png`) → 404.
 
 - `gwRouteBuilderModal` (Marsruudid-vaade, `theme-nav.js`) pole enam menüüst ligipääsetav; raja pikkust ja tüüpi muudab ✨ nupp avalehel. Kustuta, kui pole vaja.
+
+- [x] Kasutaja peatused (pood): `route-stops.js` + map.js; peatused ei säili äpi taaskäivitamisel

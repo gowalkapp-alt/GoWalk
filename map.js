@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { pickBestRoute } from './route-quality.js';
+import { legAnchors, extraRoadMeters, detourOptions, fillersFor, buildStopWaypoints } from './route-stops.js';
 import { LUCIDE_SVGS } from './config.js';
 import { state, plannedRoute, saveState, getMissingSteps } from './state.js';
 
@@ -10,6 +11,13 @@ export let map = null;
 let tileLayers = {};
 let activeLayer = null;
 let waypoints = [];
+// Kasutaja peatused (pood jms): {id, latlng, when: 'first'|'last', marker}
+let userStops = [];
+let stopIdCounter = 0;
+let stopSheetEl = null;
+let pendingTapMarker = null;
+let isGenerating = false;
+let regenQueued = false;
 let markers = [];
 let routeLine = null;
 
@@ -93,13 +101,16 @@ export function initMapAndRouting(onHudUpdate) {
   });
 
   map.on('click', e => {
-    waypoints.push(e.latlng);
-    rebuildWaypoints();
+    openStopSheet({ latlng: e.latlng });
   });
 
   const undoBtn = document.getElementById('undoWaypointBtn');
   if (undoBtn) {
     undoBtn.addEventListener('click', () => {
+      if (userStops.length > 0) {
+        removeStop(userStops[userStops.length - 1].id);
+        return;
+      }
       if (waypoints.length > 0) {
         waypoints.pop();
         rebuildWaypoints();
@@ -116,6 +127,9 @@ export function initMapAndRouting(onHudUpdate) {
   const clearBtn = document.getElementById('clearRouteBtn');
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
+      closeStopSheet();
+      userStops.forEach(st => st.marker && map.removeLayer(st.marker));
+      userStops = [];
       const startPt = waypoints.length > 0 ? [waypoints[0]] : [];
       waypoints = startPt;
       routeLine.setLatLngs([]);
@@ -244,15 +258,16 @@ function updateFloatingShuffleLabel() {
   if (!floatingShuffleBtn) return;
   const isSafe = state.settings.safeLitOnly !== false;
   const modeSvg = isSafe ? LUCIDE_SVGS.flashlight : LUCIDE_SVGS.trees;
+  const stopsLabel = userStops.length ? ' · ' + userStops.length + (userStops.length === 1 ? ' peatus' : ' peatust') : '';
   if (plannedRoute.steps === 0) {
     const missing = getMissingSteps();
     floatingShuffleBtn.innerHTML = `
     <span class="shuffle-mode-icon">${LUCIDE_SVGS.sparkles}</span>
-    <span>Tee mulle rada${missing >= 300 ? ' (' + missing.toLocaleString('et-EE') + ' sammu)' : ''}</span>
+    <span>Tee mulle rada${missing >= 300 ? ' (' + missing.toLocaleString('et-EE') + ' sammu)' : ''}${stopsLabel}</span>
   `;
     return;
   }
-  const routeText = `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)`;
+  const routeText = `Rada: ${plannedRoute.steps.toLocaleString('et-EE')} sammu (${plannedRoute.distanceKm.toFixed(2)} km)${stopsLabel}`;
 
   floatingShuffleBtn.innerHTML = `
     <span class="shuffle-mode-icon">${modeSvg}</span>
@@ -360,7 +375,7 @@ function rebuildWaypoints(customGeometry = null, skipMetricRecalc = false) {
   if (!skipMetricRecalc) {
     recalculateRouteMetrics();
   }
-  document.dispatchEvent(new CustomEvent('gw:route-changed', { detail: { count: waypoints.length } }));
+  notifyRouteChanged();
 }
 
 function setupRouteGeneratorUI() {
@@ -659,7 +674,7 @@ function removeDeadEndSpurs(latlngs) {
   return pts;
 }
 
-async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
+async function fetchLoopRouteGeometry(pointsList, safeLitOnly, allowUTurns = false) {
   const coordsQuery = [...pointsList, pointsList[0]]
     .map(pt => `${pt.lng.toFixed(6)},${pt.lat.toFixed(6)}`)
     .join(';');
@@ -675,7 +690,9 @@ async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
         `https://router.project-osrm.org/route/v1/foot/${coordsQuery}?overview=full&geometries=geojson`
       ];
 
-  for (const url of endpoints) {
+  for (const rawUrl of endpoints) {
+    // Peatuses (pood) peab saama tagasi pöörata
+    const url = allowUTurns ? rawUrl.replace('&continue_straight=true', '') : rawUrl;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 9000);
@@ -729,6 +746,11 @@ export async function generateLoopRouteForSteps(
   lastTargetSteps = targetSteps;
 
   const startPoint = waypoints.length > 0 ? waypoints[0] : map.getCenter();
+
+  if (userStops.length > 0) {
+    await generateRouteThroughStops(startPoint, targetMeters, safeLitOnly);
+    return;
+  }
 
   const angleShift =
     chosenType === 'discover'
@@ -834,4 +856,249 @@ export async function generateLoopRouteForSteps(
   setPlannedRouteMetrics(targetMeters);
   map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
   setFloatingShuffleVisible(true);
+}
+
+/* ==========================================================================
+   KASUTAJA PEATUSED (pood jms) — lisamine, muutmine ja rada läbi nende
+   ========================================================================== */
+
+function notifyRouteChanged() {
+  const hasRoute = routeLine && routeLine.getLatLngs().length > 1;
+  const count = waypoints.length > 1 || hasRoute || userStops.length > 0 ? Math.max(2, waypoints.length) : 1;
+  document.dispatchEvent(new CustomEvent('gw:route-changed', { detail: { count } }));
+}
+
+function createStopIcon(label, when) {
+  const bg = when === 'last' ? '#14b8a6' : '#f59e0b';
+  return L.divIcon({
+    className: 'custom-map-pin',
+    html: `<div style="
+      width:32px;height:32px;border-radius:10px;
+      background:${bg};color:#0b1020;font-family:'Plus Jakarta Sans',sans-serif;
+      font-weight:800;font-size:14px;display:flex;align-items:center;
+      justify-content:center;border:2px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,0.55);
+    ">${label}</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
+  });
+}
+
+function refreshStopMarkers() {
+  userStops.forEach((st, i) => {
+    if (st.marker && st.marker.setIcon) st.marker.setIcon(createStopIcon(String(i + 1), st.when));
+  });
+}
+
+function injectStopSheetStyle() {
+  if (document.getElementById('gw-stop-sheet-style')) return;
+  const st = document.createElement('style');
+  st.id = 'gw-stop-sheet-style';
+  st.textContent = [
+    '.gw-stop-sheet { position: absolute; left: 12px; right: 12px; bottom: 262px; z-index: 30; display: none;',
+    '  flex-direction: column; gap: 10px; padding: 14px; border-radius: 20px;',
+    '  background: rgba(17, 14, 32, 0.97); border: 1px solid var(--accent-secondary, #a855f7);',
+    '  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); color: #fff; font-family: var(--font-display, inherit); }',
+    '.gw-stop-sheet.open { display: flex; }',
+    '.gw-stop-title { font-size: 15px; font-weight: 800; }',
+    '.gw-stop-sub { font-size: 12px; color: #cbd5e1; margin-top: -6px; }',
+    '.gw-stop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }',
+    '.gw-stop-opt { display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 10px 6px; cursor: pointer;',
+    '  border-radius: 14px; border: 1px solid rgba(168, 85, 247, 0.4); background: rgba(30, 27, 75, 0.8); color: #fff; font: inherit; }',
+    '.gw-stop-opt strong { font-size: 14px; }',
+    '.gw-stop-opt small { font-size: 11px; color: #cbd5e1; }',
+    '.gw-stop-opt.active { border-color: #ec4899; background: rgba(124, 58, 237, 0.35); }',
+    '.gw-stop-opt:active { transform: scale(0.97); }',
+    '.gw-stop-foot { display: flex; gap: 8px; }',
+    '.gw-stop-foot button { flex: 1; padding: 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35);',
+    '  background: transparent; color: #e2e8f0; font: 700 13px inherit; cursor: pointer; }',
+    '.gw-stop-foot .danger { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }'
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
+function ensureStopSheet() {
+  if (stopSheetEl) return stopSheetEl;
+  const viewport = document.querySelector('.app-viewport');
+  if (!viewport) return null;
+  injectStopSheetStyle();
+  stopSheetEl = document.createElement('div');
+  stopSheetEl.id = 'gwStopSheet';
+  stopSheetEl.className = 'gw-stop-sheet';
+  viewport.appendChild(stopSheetEl);
+
+  const hud = document.querySelector('.bottom-hud');
+  const reposition = () => {
+    if (!hud) return;
+    const vp = viewport.getBoundingClientRect();
+    const h = hud.getBoundingClientRect();
+    stopSheetEl.style.bottom = Math.max(0, Math.round(vp.bottom - h.top + 10)) + 'px';
+  };
+  reposition();
+  if (window.ResizeObserver && hud) new ResizeObserver(reposition).observe(hud);
+  window.addEventListener('resize', reposition);
+  return stopSheetEl;
+}
+
+function clearPendingTapMarker() {
+  if (pendingTapMarker && map) map.removeLayer(pendingTapMarker);
+  pendingTapMarker = null;
+}
+
+function closeStopSheet() {
+  if (stopSheetEl) stopSheetEl.classList.remove('open');
+  clearPendingTapMarker();
+}
+
+// Avab peatuse lisamise (uus: {latlng}) või muutmise (olemasolev: {stopId}) kaardi
+function openStopSheet({ latlng = null, stopId = null }) {
+  const sheet = ensureStopSheet();
+  if (!sheet || !map) return;
+  clearPendingTapMarker();
+
+  const existing = stopId != null ? userStops.find(s => s.id === stopId) : null;
+  if (!existing && latlng) {
+    pendingTapMarker = L.marker(latlng, { icon: createStopIcon('+', 'first'), interactive: false }).addTo(map);
+  }
+  const num = existing ? userStops.indexOf(existing) + 1 : userStops.length + 1;
+  const current = existing ? existing.when : null;
+
+  sheet.innerHTML = `
+    <div class="gw-stop-title">${existing ? 'Peatus ' + num : 'Lisa peatus siia'}</div>
+    <div class="gw-stop-sub">Millal tahad siit läbi käia?</div>
+    <div class="gw-stop-row">
+      <button type="button" class="gw-stop-opt${current === 'first' ? ' active' : ''}" data-when="first">
+        <strong>Kohe</strong><small>Esimesena, siis ring</small>
+      </button>
+      <button type="button" class="gw-stop-opt${current === 'last' ? ' active' : ''}" data-when="last">
+        <strong>Tagasiteel</strong><small>Viimasena enne koju</small>
+      </button>
+    </div>
+    <div class="gw-stop-foot">
+      ${existing ? '<button type="button" class="danger" data-act="remove">Eemalda</button>' : ''}
+      <button type="button" data-act="close">${existing ? 'Sulge' : 'Tühista'}</button>
+    </div>
+  `;
+  sheet.classList.add('open');
+
+  sheet.onclick = e => {
+    const opt = e.target.closest('.gw-stop-opt');
+    const act = e.target.closest('[data-act]');
+    if (opt) {
+      const when = opt.getAttribute('data-when');
+      if (existing) setStopWhen(existing.id, when);
+      else addStop(latlng, when);
+      closeStopSheet();
+    } else if (act) {
+      if (act.getAttribute('data-act') === 'remove' && existing) removeStop(existing.id);
+      closeStopSheet();
+    }
+  };
+}
+
+function addStop(latlng, when) {
+  const id = ++stopIdCounter;
+  const marker = L.marker(latlng, {
+    draggable: true,
+    icon: createStopIcon(String(userStops.length + 1), when)
+  }).addTo(map);
+  const stop = { id, latlng: L.latLng(latlng.lat, latlng.lng), when, marker };
+  marker.on('click', () => openStopSheet({ stopId: id }));
+  marker.on('dragend', e => {
+    const ll = e.target.getLatLng();
+    stop.latlng = L.latLng(ll.lat, ll.lng);
+    regenerateIfRoute();
+  });
+  userStops.push(stop);
+  refreshStopMarkers();
+  afterStopsChanged();
+}
+
+function setStopWhen(id, when) {
+  const st = userStops.find(s => s.id === id);
+  if (!st || st.when === when) return;
+  st.when = when;
+  refreshStopMarkers();
+  afterStopsChanged();
+}
+
+function removeStop(id) {
+  const i = userStops.findIndex(s => s.id === id);
+  if (i < 0) return;
+  if (userStops[i].marker) map.removeLayer(userStops[i].marker);
+  userStops.splice(i, 1);
+  refreshStopMarkers();
+  afterStopsChanged();
+}
+
+function afterStopsChanged() {
+  updateFloatingShuffleLabel();
+  setFloatingShuffleVisible(plannedRoute.steps > 0);
+  notifyRouteChanged();
+  regenerateIfRoute();
+}
+
+// Kui rada juba on, arvuta see peatuste muutudes kohe uuesti
+function regenerateIfRoute() {
+  if (plannedRoute.steps <= 0) return;
+  if (isGenerating) {
+    regenQueued = true;
+    return;
+  }
+  const fallback = getMissingSteps() >= 300 ? getMissingSteps() : 3000;
+  generateLoopRouteForSteps(lastTargetSteps || fallback, lastRouteType, lastStopsCount);
+}
+
+async function generateRouteThroughStops(startPoint, targetMeters, safeLitOnly) {
+  isGenerating = true;
+  lastGeneratedBearing = (lastGeneratedBearing + 1.3 + Math.random()) % (2 * Math.PI);
+  if (floatingShuffleBtn) {
+    floatingShuffleBtn.classList.add('visible');
+    floatingShuffleBtn.innerHTML = `${LUCIDE_SVGS.loader}<span>Otsin rada läbi peatuste...</span>`;
+  }
+  try {
+    const { firsts, lasts, from, to } = legAnchors(startPoint, userStops);
+    const extra = extraRoadMeters(startPoint, firsts, lasts, targetMeters);
+    const options = detourOptions(from, to, extra, lastGeneratedBearing);
+
+    const build = async (desc, extraM) => {
+      const fillers = fillersFor(desc, from, to, extraM);
+      const wps = buildStopWaypoints(startPoint, firsts, fillers, lasts);
+      const route = await fetchLoopRouteGeometry(wps, safeLitOnly, true);
+      if (!route || !route.geometry) return null;
+      const pts = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+      return { pts, desc, extraM };
+    };
+
+    const found = (await Promise.all(options.map(d => build(d, extra).catch(() => null)))).filter(Boolean);
+    let best = pickBestRoute(found, targetMeters);
+
+    // Täpsusta pikkust: lisa/võta ringilt puuduv/liigne
+    if (best && !best.desc.none && best.quality.errFrac > 0.08) {
+      const newExtra = best.extraM + (targetMeters - best.quality.lengthM);
+      if (newExtra > 80) {
+        const refined = await build(best.desc, newExtra).catch(() => null);
+        const pick = pickBestRoute([best, refined].filter(Boolean), targetMeters);
+        if (pick) best = pick;
+      }
+    }
+
+    if (!best) {
+      if (floatingShuffleBtn) updateFloatingShuffleLabel();
+      setFloatingShuffleVisible(false);
+      return;
+    }
+
+    waypoints = [startPoint];
+    rebuildWaypoints(best.pts, true);
+    setPlannedRouteMetrics(best.quality.lengthM);
+    map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
+    setFloatingShuffleVisible(true);
+    notifyRouteChanged();
+  } finally {
+    isGenerating = false;
+    if (regenQueued) {
+      regenQueued = false;
+      regenerateIfRoute();
+    }
+  }
 }
