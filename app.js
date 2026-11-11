@@ -36,6 +36,7 @@ import { startBackgroundGps, stopBackgroundGps } from './features/background-gps
 import { setupSimpleHome, setupSimpleSettings } from './features/simple-home.js';
 import { setupSetupGuide } from './features/setup-guide.js';
 import { setupFaq } from './features/faq.js';
+import { setupNativeAuthReturn } from './features/native-auth.js';
 
 
 function bootGoWalkApp() {
@@ -802,6 +803,7 @@ function bootGoWalkApp() {
   setupProfileAndAuthModals(renderProfile, refreshAllUI);
   setupHealthSync(updateHudUI);
   setupFaq();
+  setupNativeAuthReturn();
   setupSetupGuide();
   refreshAllUI();
   initSupabase(refreshAllUI);

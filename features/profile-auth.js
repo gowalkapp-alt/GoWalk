@@ -1,3 +1,4 @@
+import { startNativeGoogleLogin, isNativeAuthPlatform } from './native-auth.js';
 import { state, supabaseClient, saveState, switchUserContext, performFullLogout } from '../state.js';
 
 export function setupProfileAndAuthModals(renderProfileFn, refreshAllUIFn) {
@@ -102,6 +103,10 @@ export function setupProfileAndAuthModals(renderProfileFn, refreshAllUIFn) {
           return;
         }
         try {
+          if (isNativeAuthPlatform()) {
+            await startNativeGoogleLogin(supabaseClient);
+            return;
+          }
           const res = await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
             options: { redirectTo: window.location.origin + window.location.pathname }
