@@ -38,6 +38,7 @@ import { setupSetupGuide } from './features/setup-guide.js';
 import { setupFaq } from './features/faq.js';
 import { setupNativeAuthReturn } from './features/native-auth.js';
 import { setupSubpageBack } from './features/subpage-back.js';
+import { setupAccountExtras } from './features/account-extras.js';
 
 
 function bootGoWalkApp() {
@@ -807,6 +808,7 @@ function bootGoWalkApp() {
   setupNativeAuthReturn();
   setupSetupGuide();
   setupSubpageBack();
+  setupAccountExtras();
   refreshAllUI();
   initSupabase(refreshAllUI);
 }
