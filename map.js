@@ -2,6 +2,7 @@
    GOWALK PRO — 3. LEAFLET MAP, LAYERS, SAFE LIT LOOP GENERATOR & OSRM ROUTING
    ========================================================================== */
 
+import { pickBestRoute } from './route-quality.js';
 import { LUCIDE_SVGS } from './config.js';
 import { state, plannedRoute, saveState, getMissingSteps } from './state.js';
 
@@ -534,8 +535,8 @@ async function fetchSafeLitStreetNodes(startPoint, searchRadiusMeters) {
   const query = `
     [out:json][timeout:3];
     (
-      way(around:${radius},${startPoint.lat},${startPoint.lng})["lit"="yes"]["highway"!~"motorway|trunk|track|path|bridleway|steps|construction"];
-      way(around:${radius},${startPoint.lat},${startPoint.lng})["highway"~"residential|living_street|pedestrian|tertiary|secondary"]["lit"!="no"];
+      way(around:${radius},${startPoint.lat},${startPoint.lng})["lit"="yes"]["highway"~"residential|living_street|pedestrian|footway|cycleway|service|unclassified"];
+      way(around:${radius},${startPoint.lat},${startPoint.lng})["highway"~"residential|living_street|pedestrian|footway"]["lit"!="no"];
     );
     out geom;
   `;
@@ -607,7 +608,8 @@ function buildTrueCircularWaypoints(
   const stopsCount = Math.max(1, Math.min(8, parseInt(numStops, 10) || 3));
   const loopCenter = offsetCoordinate(startPoint, loopRadiusMeters, centerBearingRad);
   const angleA = centerBearingRad + Math.PI;
-  const snapLimit = Math.max(180, loopRadiusMeters * 0.65);
+  // Ära lükka punkte kaugele: väike nihe tänavale, mitte ringi moonutamine.
+  const snapLimit = Math.min(120, Math.max(40, loopRadiusMeters * 0.2));
 
   const resultPoints = [startPoint];
 
@@ -675,7 +677,10 @@ async function fetchLoopRouteGeometry(pointsList, safeLitOnly) {
 
   for (const url of endpoints) {
     try {
-      const res = await fetch(url);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
       if (!res.ok) continue;
       const data = await res.json();
       if (data && data.routes && data.routes[0]) {
@@ -745,7 +750,7 @@ export async function generateLoopRouteForSteps(
     aspectRatio = aspectRatios[routeVariantCounter % aspectRatios.length];
   }
 
-  let loopRadiusMeters = Math.max(100, targetMeters / 8.0);
+  const loopRadiusMeters = Math.max(100, targetMeters / 8.0);
 
   if (floatingShuffleBtn) {
     floatingShuffleBtn.classList.add('visible');
@@ -760,41 +765,44 @@ export async function generateLoopRouteForSteps(
     ? await fetchSafeLitStreetNodes(startPoint, loopRadiusMeters)
     : [];
 
-  waypoints = buildTrueCircularWaypoints(
-    startPoint,
-    loopRadiusMeters,
-    lastGeneratedBearing,
-    turnSign,
-    aspectRatio,
-    safeNodes,
-    stopsCount
-  );
+  // Teeme mitu kandidaatrada eri suundades, hindame neid (pikkus, tagasikäimine,
+  // siksakid) ja valime parima. Vt route-quality.js.
+  async function buildCandidate(bearing, sign, radius) {
+    const wps = buildTrueCircularWaypoints(
+      startPoint,
+      radius,
+      bearing,
+      sign,
+      aspectRatio,
+      safeNodes,
+      stopsCount
+    );
+    const route = await fetchLoopRouteGeometry(wps, safeLitOnly);
+    if (!route || !route.geometry) return null;
+    let pts = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+    pts = removeDeadEndSpurs(pts);
+    return { pts, wps, bearing, sign, radius };
+  }
 
   try {
-    let route = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
+    const bearings = [0, 1, 2].map(k => (lastGeneratedBearing + (k * 2 * Math.PI) / 3) % (2 * Math.PI));
+    const found = await Promise.all(
+      bearings.map(b => buildCandidate(b, turnSign, loopRadiusMeters).catch(() => null))
+    );
+    let best = pickBestRoute(found.filter(Boolean), targetMeters);
 
-    if (route && route.distance > 80) {
-      const ratio = targetMeters / route.distance;
-      if (ratio < 0.82 || ratio > 1.18) {
-        const clampedRatio = Math.max(0.55, Math.min(1.65, ratio));
-        loopRadiusMeters = loopRadiusMeters * clampedRatio;
-        waypoints = buildTrueCircularWaypoints(
-          startPoint,
-          loopRadiusMeters,
-          lastGeneratedBearing,
-          turnSign,
-          aspectRatio,
-          safeNodes,
-          stopsCount
-        );
-        const refinedRoute = await fetchLoopRouteGeometry(waypoints, safeLitOnly);
-        if (refinedRoute) route = refinedRoute;
-      }
+    // Kui pikkus on liiga kaugel soovitust, korda parima suunaga õige raadiusega
+    if (best && best.quality.errFrac > 0.08 && best.quality.lengthM > 80) {
+      const ratio = targetMeters / best.quality.lengthM;
+      const radius = best.radius * Math.max(0.55, Math.min(1.65, ratio));
+      const refined = await buildCandidate(best.bearing, best.sign, radius).catch(() => null);
+      const pick = pickBestRoute([best, refined].filter(Boolean), targetMeters);
+      if (pick) best = pick;
     }
 
-    if (route) {
-      let latlngs = route.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
-      latlngs = removeDeadEndSpurs(latlngs);
+    if (best) {
+      lastGeneratedBearing = best.bearing;
+      const latlngs = best.pts;
 
       if (latlngs.length >= stopsCount + 4) {
         const sampledWaypoints = [startPoint];
@@ -806,10 +814,13 @@ export async function generateLoopRouteForSteps(
           sampledWaypoints.push(latlngs[idx]);
         }
         waypoints = sampledWaypoints;
+      } else {
+        waypoints = best.wps;
       }
 
       rebuildWaypoints(latlngs, true);
-      setPlannedRouteMetrics(targetMeters);
+      // Näita päris raja pikkust, mitte soovitud sihtarvu
+      setPlannedRouteMetrics(best.quality.lengthM);
       map.fitBounds(routeLine.getBounds(), { padding: [54, 54] });
       setFloatingShuffleVisible(true);
       return;

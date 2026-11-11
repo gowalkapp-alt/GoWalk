@@ -22,6 +22,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 | `config.js` | Supabase URL/võti, admin e-mailid, kontotasemed, ikoonid |
 | `state.js` | globaalne `state`, `saveState`, Supabase init ja sünkroon, kasutajakonteksti vahetus |
 | `map.js` | Leaflet kaart, marsruutide genereerimine (Overpass API), läbitud raja salvestus |
+| `route-quality.js` | raja kvaliteedi hindamine (pikkuse viga, tagasikäimine, järsud pöörded, siksakid); puhtad funktsioonid, `pickBestRoute` |
 | `dial.js` | sammude valiku ratas (`setupStepDialModal`) |
 | `stats.js` | "Sinu areng" vaade: ajalugu, GPS-rajad, ülevaated (laetakse laisalt) |
 | `admin.js` | admini paneel ja promokoodid |
@@ -53,7 +54,7 @@ Andmed: Supabase (sisselogimine, profiil, promokoodid) + `localStorage` (kohalik
 - [x] UI lihtsustus samm 1: külgmenüü 3 punkti, "Sammud ja import" (käsitsi + failiimport), sammude allikas natiivis automaatne
 - [x] UI lihtsustus samm 2 (avaleht): "Tee mulle rada" nupp, stiilid ikooni taga
 - [x] UI lihtsustus samm 3: alumine menüü 3 sakki (Avaleht / Ajalugu / Seaded), külgmenüü peidetud, profiil, menüüpunktid ja versioon asuvad Seadetes (`setupSimpleSettings` tõstab olemasolevad elemendid ümber)
-- [ ] Marsruudi kvaliteet puuduvate sammude põhjal
+- [x] Marsruudi kvaliteet v1: 3 kandidaati eri suundades, hinnang ja parima valik, pikkuse täpsustus, päris pikkuse näitamine (testimata päris võrgus)
 - [ ] iOS (Apple Health)
 - [ ] Taustal asukoha jälgimine natiivse pluginaga (`navigator.geolocation` ei tööta taustal)
 
