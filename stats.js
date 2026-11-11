@@ -7,6 +7,7 @@ import { state } from './state.js';
 let activePeriod = 'day';
 let selectedDateKey = '';
 let historyFilterMode = 'all'; // 'all' | 'gps'
+let historyLimit = 14;
 let detailLeafletMap = null;
 
 function makePngGradientUrl(c1, c2, c3, vertical) {
@@ -297,6 +298,13 @@ function injectStatsCss() {
     '.gw-wcol.active .gw-wday { color:#f472b6; font-weight:800; }',
     '.gw-motiv-card { display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,rgba(46,29,89,0.9),rgba(20,24,52,0.96)); border:1px solid rgba(236,72,153,0.4); border-radius:22px; padding:14px 16px; }',
     '.gw-motiv-ico { width:46px; height:46px; border-radius:50%; background-image:url("' + tabPng + '") !important; background-size:100% 100% !important; display:flex; align-items:center; justify-content:center; color:#fff; box-shadow:0 0 18px rgba(236,72,153,0.55); flex-shrink:0; }',
+    '.gw-insights { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:14px 0; }',
+    '.gw-ins { display:flex; flex-direction:column; align-items:center; gap:2px; padding:12px 6px; border-radius:18px; background:rgba(26,31,66,0.85); border:1px solid rgba(168,85,247,0.25); text-align:center; }',
+    '.gw-ins strong { font-size:1.05rem; color:#fff; }',
+    '.gw-ins span:last-child { font-size:0.7rem; color:#94a3b8; }',
+    '.gw-ins-ico { font-size:1.1rem; }',
+    '.gw-more-hist { width:100%; padding:13px; margin:8px 0 4px; border-radius:14px; border:1px solid rgba(168,85,247,0.4); background:transparent; color:#e9d5ff; font-weight:800; cursor:pointer; }',
+    '#statsModal .subview-body { padding-bottom: calc(120px + var(--gw-inset-bottom, 0px)) !important; }',
     '.gw-motiv-title { font-size:0.92rem; font-weight:800; color:#fff; margin-bottom:2px; }',
     '.gw-motiv-sub { font-size:0.76rem; color:#cbd5e1; line-height:1.35; }',
     '.gw-hist-head-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; }',
@@ -656,12 +664,58 @@ export function renderStatsAndHistory() {
         })
       : sortedDays;
 
+  // Kokkuvõte: seeria, parim päev, 7 päeva keskmine
+  const keyOf = function (d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  let streakDays = 0;
+  for (let i = 0; i < 400; i++) {
+    const d = new Date(todayObj);
+    d.setDate(d.getDate() - i);
+    const rr = daysMap.get(keyOf(d));
+    const reached = !!rr && (rr.steps || 0) >= dailyGoal;
+    if (reached) streakDays++;
+    else if (i === 0) continue; // täna veel pooleli – ei katkesta seeriat
+    else break;
+  }
+  let bestDay = null;
+  daysMap.forEach(function (r) { if (!bestDay || (r.steps || 0) > (bestDay.steps || 0)) bestDay = r; });
+  let avg7 = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(todayObj);
+    d.setDate(d.getDate() - i);
+    const rr = daysMap.get(keyOf(d));
+    avg7 += rr ? (rr.steps || 0) : 0;
+  }
+  avg7 = Math.round(avg7 / 7);
+  const fmtN = function (n) { return Number(n || 0).toLocaleString('et-EE'); };
+  const insightsHtml =
+    '<div class="gw-insights">' +
+      '<div class="gw-ins"><span class="gw-ins-ico">🔥</span><strong>' + streakDays + '</strong><span>päeva seeria</span></div>' +
+      '<div class="gw-ins"><span class="gw-ins-ico">🏆</span><strong>' + fmtN(bestDay ? bestDay.steps : 0) + '</strong><span>parim päev</span></div>' +
+      '<div class="gw-ins"><span class="gw-ins-ico">📈</span><strong>' + fmtN(avg7) + '</strong><span>7 p keskmine</span></div>' +
+    '</div>';
+  const todaySteps = (daysMap.get(todayKey) || {}).steps || 0;
+  let motivTitle;
+  let motivSub;
+  if (todaySteps >= dailyGoal) {
+    motivTitle = 'Eesmärk täidetud! 🎉';
+    motivSub = streakDays > 1 ? 'Seeria on ' + streakDays + ' päeva – hoia kõndi!' : 'Hea töö, tänane eesmärk on käes.';
+  } else if (streakDays > 0) {
+    motivTitle = 'Seeria ' + streakDays + ' päeva 🔥';
+    motivSub = 'Täna on veel ' + fmtN(dailyGoal - todaySteps) + ' sammu, et seeria jätkuks.';
+  } else {
+    motivTitle = 'Alusta uut seeriat';
+    motivSub = 'Täna on eesmärgini ' + fmtN(Math.max(0, dailyGoal - todaySteps)) + ' sammu.';
+  }
+
   let histHtml = '';
   if (filteredDays.length === 0) {
     histHtml =
       '<div class="history-item" style="justify-content:center;color:#94a3b8;font-size:0.82rem;">Salvestatud GPS-rajaga kõnde veel pole. Vajuta avalehel "Alusta kõndimist"!</div>';
   } else {
-    for (let i = 0; i < filteredDays.length; i++) {
+    const shownCount = Math.min(filteredDays.length, historyLimit);
+    for (let i = 0; i < shownCount; i++) {
       const r = filteredDays[i];
       const hasGps = Array.isArray(r.walkTrack) && r.walkTrack.length >= 2;
       const gpsBadge = hasGps ? '<span class="gw-gps-tag">📍 GPS-rada</span>' : '';
@@ -687,9 +741,12 @@ export function renderStatsAndHistory() {
         '</span>' +
         '</div>' +
         '<span class="history-steps-badge">' +
-        Number(r.steps || 0).toLocaleString('et-EE') +
+        ((r.steps || 0) >= dailyGoal ? '✓ ' : '') + Number(r.steps || 0).toLocaleString('et-EE') +
         ' sammu</span>' +
         '</div>';
+    }
+    if (filteredDays.length > shownCount) {
+      histHtml += '<button type="button" class="gw-more-hist" id="gwMoreHist">Näita rohkem (' + (filteredDays.length - shownCount) + ')</button>';
     }
   }
 
@@ -756,10 +813,12 @@ export function renderStatsAndHistory() {
       '<div class="gw-motiv-card">',
         '<div class="gw-motiv-ico"><i data-lucide="flame"></i></div>',
         '<div style="flex:1;">',
-          '<div class="gw-motiv-title">Suurepärane töö!</div>',
-          '<div class="gw-motiv-sub">Vali ajaloost päev ja vajuta kaardile, et võrrelda GPS-rada kellaga.</div>',
+          '<div class="gw-motiv-title">' + motivTitle + '</div>',
+          '<div class="gw-motiv-sub">' + motivSub + '</div>',
         '</div>',
       '</div>',
+
+      insightsHtml,
 
       '<div class="gw-hist-head-row" id="gwHistorySectionAnchor">',
         '<h4 class="section-subtitle" style="margin:0;">Salvestatud päevad & rajad</h4>',
@@ -797,9 +856,16 @@ export function renderStatsAndHistory() {
       return;
     }
 
+    if (e.target.closest('#gwMoreHist')) {
+      historyLimit += 20;
+      renderStatsAndHistory();
+      return;
+    }
+
     const filterBtn = e.target.closest('.gw-hfilter-btn');
     if (filterBtn) {
       historyFilterMode = filterBtn.getAttribute('data-hfilter') || 'all';
+      historyLimit = 14;
       renderStatsAndHistory();
       return;
     }
