@@ -39,8 +39,19 @@ async function checkLocation() {
   return lsGet('gw_loc_asked') ? 'ok' : 'ask';
 }
 
+function limit(p, ms, fallback) {
+  return Promise.race([
+    Promise.resolve(p).catch(() => fallback),
+    new Promise(res => setTimeout(() => res(fallback), ms))
+  ]);
+}
+
 export async function checkSetup() {
-  const [health, loc, battery] = await Promise.all([inspectHealth(), checkLocation(), checkBattery()]);
+  const [health, loc, battery] = await Promise.all([
+    limit(inspectHealth(), 12000, { state: 'error', steps: 0, sources: [] }),
+    limit(checkLocation(), 4000, 'ask'),
+    limit(checkBattery(), 6000, 'unknown')
+  ]);
   const complete = health.state === 'ok' && loc === 'ok' && battery !== 'limited';
   // "no-data" (0 sammu) ei blokeeri valmisolekut, kui luba on olemas
   const ready = (health.state === 'ok' || health.state === 'no-data') && loc === 'ok' && battery !== 'limited';
