@@ -8,9 +8,10 @@ function injectCss() {
   st.id = 'gw-acc-css';
   st.textContent = [
     '.gw-profile-email { font-size: 0.8rem; color: #cbd5e1; margin: 2px 0 4px; word-break: break-all; }',
-    '.gw-danger-link { display: none; width: 100%; background: none; border: 0; padding: 8px; color: #fca5a5; font-weight: 700; font-size: 0.85rem; text-decoration: underline; cursor: pointer; }',
-    '.gw-account-block[data-auth="in"] .gw-danger-link { display: block; }',
-    '.gw-reset-btn { width: 100%; margin-top: 12px; padding: 13px; border-radius: 14px; border: 1px solid rgba(248, 113, 113, 0.5); background: transparent; color: #fca5a5; font-weight: 800; cursor: pointer; }',
+    '#settingsModal .subview-body > .gw-account-block .profile-name-btn { background: none !important; background-image: none !important; box-shadow: none !important; border: 0 !important; padding: 0 !important; color: #fff !important; }',
+    '#settingsModal .subview-body > .gw-account-block .profile-name-btn span { background: none !important; }',
+    '#settingsModal .subview-body { padding-bottom: calc(120px + var(--gw-inset-bottom, 0px)) !important; }',
+    '.gw-reset-btn { display: block; width: 100%; margin-top: 12px; padding: 13px; border-radius: 14px; border: 1px solid rgba(248, 113, 113, 0.5); background: transparent; color: #fca5a5; font-weight: 800; cursor: pointer; }',
     '.gw-confirm-ov { position: fixed; inset: 0; z-index: 100000; background: rgba(5, 8, 20, 0.8); display: none; align-items: center; justify-content: center; padding: 20px; }',
     '.gw-confirm-ov.open { display: flex; }',
     '.gw-confirm-card { width: 100%; max-width: 380px; background: #12163a; border: 1px solid rgba(248, 113, 113, 0.5); border-radius: 20px; padding: 18px; color: #e2e8f0; }',
@@ -96,7 +97,10 @@ export function setupAccountExtras() {
     if (nameBtn) nameBtn.insertAdjacentElement('afterend', emailEl);
     else info.prepend(emailEl);
   }
+  let delBtn = null;
   const showEmail = () => {
+    const gt = document.getElementById('googleAuthText');
+    if (delBtn) delBtn.style.display = gt && /välja/i.test(gt.textContent || '') ? '' : 'none';
     const t = document.getElementById('googleAuthText');
     const m = t && /\(([^)]+)\)/.exec(t.textContent || '');
     emailEl.textContent = (state.profile && state.profile.email) || (m ? m[1] : '');
@@ -105,20 +109,6 @@ export function setupAccountExtras() {
   showEmail();
   const auth = account.querySelector('.drawer-auth-bar');
   if (auth) new MutationObserver(showEmail).observe(auth, { subtree: true, childList: true, characterData: true });
-
-  // Kustuta konto (nähtav ainult sisse logituna)
-  const del = document.createElement('button');
-  del.type = 'button';
-  del.className = 'gw-danger-link';
-  del.textContent = 'Kustuta konto';
-  del.addEventListener('click', () => confirmDialog({
-    title: 'Kustuta konto',
-    text: 'Konto ja kõik selle andmed (sammud, ajalugu, rajad) kustutatakse lõplikult nii pilvest kui sellest seadmest. Seda ei saa tagasi võtta.',
-    word: 'KUSTUTA',
-    goLabel: 'Kustuta lõplikult',
-    onGo: deleteAccount
-  }));
-  account.appendChild(del);
 
   // Nulli andmed ("Rohkem" all)
   const fold = document.querySelector('.gw-more-fold');
@@ -135,5 +125,19 @@ export function setupAccountExtras() {
       onGo: resetData
     }));
     fold.appendChild(reset);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'gw-reset-btn';
+    del.textContent = 'Kustuta konto';
+    del.addEventListener('click', () => confirmDialog({
+      title: 'Kustuta konto',
+      text: 'Konto ja kõik selle andmed (sammud, ajalugu, rajad) kustutatakse lõplikult nii pilvest kui sellest seadmest. Seda ei saa tagasi võtta.',
+      word: 'KUSTUTA',
+      goLabel: 'Kustuta lõplikult',
+      onGo: deleteAccount
+    }));
+    fold.appendChild(del);
+    delBtn = del;
+    showEmail();
   }
 }
